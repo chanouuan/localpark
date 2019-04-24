@@ -51,7 +51,7 @@
 /*
  * PHP QR Code encoder
  *
- * common constants
+ * Common constants
  *
  * Based on libqrencode C library distributed under LGPL 2.1
  * Copyright (C) 2006, 2007, 2008, 2009 Kentaro Fukuchi <fukuchi@megaui.net>
@@ -2313,7 +2313,7 @@
         //----------------------------------------------------------------------
         public static function init_rs_char($symsize, $gfpoly, $fcr, $prim, $nroots, $pad)
         {
-            // common code for intializing a Reed-Solomon control block (char or int symbols)
+            // Common code for intializing a Reed-Solomon control block (char or int symbols)
             // Copyright 2004 Phil Karn, KA9Q
             // May be used under the terms of the GNU Lesser General Public License (LGPL)
 

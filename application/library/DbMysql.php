@@ -66,7 +66,7 @@ class DbMysql extends Db {
                 $vals[] = isset($v[2]) ? $v[2] : 'AND';
                 $vals[] = $k;
                 $vals[] = $v[0];
-                if ($v[0] == 'in' || $v[0] == 'IN') {
+                if ($v[0] == 'in' || $v[0] == 'IN' || $v[0] == 'not in' || $v[0] == 'NOT IN') {
                     $v[1] = is_array($v[1]) ? $v[1] : explode(',', $v[1]);
                     $placeholder = [];
                     foreach ($v[1] as $kk => $vv) {
@@ -203,18 +203,10 @@ class DbMysql extends Db {
     {
         $value = [];
         foreach ($fieldlist as $k => $v) {
-            switch ($v{0}) {
-                case '{':
-                    // 表达式{!}
-                    preg_match('/^\{\!(.+)\}$/', $v, $matches);
-                    if ($matches && isset($matches[1])) {
-                        $value[] = '`' . $k . '` = ' . $matches[1];
-                    } else {
-                        $value[] = '`' . $k . '` = ' . $this->getFieldPrototype($v);
-                    }
-                    break;
-                default:
-                    $value[] = '`' . $k . '` = ' . $this->getFieldPrototype($v, !empty($parameters));
+            if (is_array($v)) {
+                $value[] = '`' . $k . '` = ' . current($v);
+            } else {
+                $value[] = '`' . $k . '` = ' . $this->getFieldPrototype($v, !empty($parameters));
             }
         }
         unset($fieldlist);

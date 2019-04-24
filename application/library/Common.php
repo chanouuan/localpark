@@ -68,7 +68,7 @@ function getRefundMoney ($ordertime)
     return false;
 }
 
-function sizecount ($byte)
+function byte_convert ($byte)
 {
     if ($byte < 1024) {
         return $byte . 'byte';
@@ -81,7 +81,7 @@ function sizecount ($byte)
     }
 }
 
-function round_dollar ($fen, $suffix = true)
+function round_dollar ($fen, $suffix = false)
 {
     $fen /= 100;
     return $suffix ? sprintf("%01.2f", $fen) : round($fen, 2);
@@ -117,29 +117,37 @@ function getSysConfig ($key = null, $target = 'config')
     return isset($sys_config[$target][$key]) ? $sys_config[$target][$key] : null;
 }
 
-function getConfig ($app = null, $name = null)
+function getConfig ($app = null, $name = null, $default = null)
 {
     if (false === F('config')) {
-        $result = \app\library\DB::getInstance()->table('__tablepre__config')->field('app,name,value,type')->select();
+        $result = \app\library\DB::getInstance()->table('__tablepre__config')->field('app,name,value,type,min,max')->select();
         $config = array();
         foreach ($result as $k => $v) {
             if ($v['type'] == 'textarea') {
                 $v['value'] = htmlspecialchars_decode($v['value'], ENT_QUOTES);
-            } elseif ($v['type'] == 'number') {
+            } else if ($v['type'] == 'number') {
                 $v['value'] = intval($v['value']);
+                if (isset($v['min'])) {
+                    $v['value'] = $v['value'] < $v['min'] ? $v['min'] : $v['value'];
+                }
+                if (isset($v['max'])) {
+                    $v['value'] = $v['value'] > $v['max'] ? $v['max'] : $v['value'];
+                }
+            } else if ($v['type'] == 'bool') {
+                $v['value'] = $v['value'] ? 1 : 0;
             }
             $config[$v['app']][$v['name']] = $v['value'];
         }
         F('config', $config);
     }
     $config = F('config');
-    if (isset($config[$app])) {
-        $config = $config[$app];
+    if (isset($app)) {
+        $config = isset($config[$app]) ? $config[$app] : null;
     }
-    if (isset($config[$name])) {
-        $config = $config[$name];
+    if (isset($name)) {
+        $config = isset($config[$name]) ? $config[$name] : null;
     }
-    return $config;
+    return isset($config) ? $config : $default;
 }
 
 function msubstr ($str, $start = 0, $length = 250, $charset = 'utf-8', $suffix = false)
@@ -166,16 +174,16 @@ function set_cookie ($name, $value, $expire = 0)
     $_COOKIE[$name] = $value;
 }
 
-function template_replace ($template, $value)
+function template_replace ($template, array $value)
 {
     if (empty($template)) {
         return '';
     }
-    if (empty($value)) {
-        return $template;
-    }
     foreach ($value as $k => $v) {
         $template = str_replace('{$' . $k . '}', $v, $template);
+    }
+    if (false !== strpos($template, '{$')) {
+        $template = preg_replace('/(\{\$.+\})/', '', $template);
     }
     return $template;
 }
@@ -325,11 +333,6 @@ function check_client ()
 
 function get_ip ()
 {
-    global $client_ip_address;
-    IF (isset($client_ip_address)) {
-        $long = ip2long($client_ip_address);
-        if ($long != -1 && $long !== FALSE) {return $client_ip_address;}
-    }
     $ip = false;
     if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
         $ip = $_SERVER['HTTP_CLIENT_IP'];
@@ -627,12 +630,18 @@ function json_mysql_encode ($data)
 
 function uploadfile ($upfile, $allow_type = 'jpg,jpeg,gif,png,bmp', $width = 80, $height = 0)
 {
-    $upload_path = APPLICATION_PATH . DIRECTORY_SEPARATOR . 'upload';
-    if (!$file_exe = strtolower(substr(strrchr($upfile['name'], '.'), 1))) {return '-文件格式错误';}
+    $upload_path = APPLICATION_PATH . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'upload';
+    if (!$file_exe = strtolower(substr(strrchr($upfile['name'], '.'), 1))) {
+        return error('文件格式错误');
+    }
     if ($allow_type && $allow_type != '*') {
-        if (false === strpos($allow_type, $file_exe)) {return '-文件类型不允许';}
+        if (false === strpos($allow_type, $file_exe)) {
+            return error('文件类型不允许');
+        }
     } else {
-        if (false !== strpos('php,js,css,exe,asp,aspx,vbs', $file_exe)) {return '-文件类型不允许';}
+        if (false !== strpos('php,js,css,exe,asp,aspx,vbs', $file_exe)) {
+            return error('文件类型不允许');
+        }
     }
     $file_type = 0;
     if (false !== strpos('jpg,jpeg,gif,png,bmp', $file_exe)) {
@@ -647,7 +656,9 @@ function uploadfile ($upfile, $allow_type = 'jpg,jpeg,gif,png,bmp', $width = 80,
     $url = $file_path . DIRECTORY_SEPARATOR . $file_name;
     mkdirm($upload_path . DIRECTORY_SEPARATOR . $file_path);
     if (is_uploaded_file($upfile['tmp_name'])) {
-        if (!move_uploaded_file($upfile['tmp_name'], $upload_path . DIRECTORY_SEPARATOR . $url)) {return '-upload error';}
+        if (!move_uploaded_file($upfile['tmp_name'], $upload_path . DIRECTORY_SEPARATOR . $url)) {
+            return error('上传失败');
+        }
     } else {
         rename($upfile['tmp_name'], $upload_path . DIRECTORY_SEPARATOR . $url);
     }
@@ -659,7 +670,7 @@ function uploadfile ($upfile, $allow_type = 'jpg,jpeg,gif,png,bmp', $width = 80,
     $files['file_ext'] = $file_exe;
     $files['type'] = $file_type;
     $files['thumburl'] = $thumburl ? getthumburl($files['url']) : '';
-    return $files;
+    return success($files);
 }
 
 function getthumburl ($url)
