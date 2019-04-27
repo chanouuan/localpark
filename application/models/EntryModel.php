@@ -15,9 +15,14 @@ class EntryModel extends Crud {
      */
     public function getCarInfo ($car_number)
     {
-        return $this->find([
+        $info = $this->find([
             'car_number' => $car_number
         ], 'id,car_type,current_node_id,last_nodes,update_time');
+        if ($info) {
+            // 节点记录 {{node_id:time}}
+            $info['last_nodes'] = json_decode($info['last_nodes'], true);
+        }
+        return $info;
     }
 
 }

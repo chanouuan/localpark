@@ -36,7 +36,7 @@ class CarModel extends Crud {
     {
         if (!$carPaths = $this->queryCarPaths($car_number)) {
             return [];
-        };
+        }
         return [
             'car_type' => CarType::MEMBER_CAR,
             'car_path' => $carPaths,

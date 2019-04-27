@@ -13,7 +13,13 @@ class PathModel extends Crud {
      */
     public function getTempCarPath ()
     {
-        return $this->select(['allow_temp_car' => 1], 'id,start_node,end_node,nodes,allow_temp_car,allow_invalid_car,allow_child_car');
+        $list = $this->select(['allow_temp_car' => 1], 'id,start_node,end_node,nodes,allow_temp_car,allow_invalid_car,allow_child_car');
+        if ($list) {
+            foreach ($list as $k => $v) {
+                $list[$k]['nodes'] = json_decode($v['nodes'], true);
+            }
+        }
+        return $list;
     }
 
     /**
@@ -21,7 +27,13 @@ class PathModel extends Crud {
      */
     public function getPathNodeById ($paths)
     {
-        return $this->select(['id' => ['in', $paths]], 'id,start_node,end_node,nodes,allow_temp_car,allow_invalid_car,allow_child_car');
+        $list = $this->select(['id' => ['in', $paths]], 'id,start_node,end_node,nodes,allow_temp_car,allow_invalid_car,allow_child_car');
+        if ($list) {
+            foreach ($list as $k => $v) {
+                $list[$k]['nodes'] = json_decode($v['nodes'], true);
+            }
+        }
+        return $list;
     }
 
 }
