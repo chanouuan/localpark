@@ -115,6 +115,16 @@ class Controller {
                 if (!RateLimit::grant($_SERVER['REMOTE_ADDR'] . $module . $action, trim($matches[1]))) {
                     json(null, StatusCodes::getMessage(StatusCodes::ACCESS_NUM_OVERFLOW), StatusCodes::ACCESS_NUM_OVERFLOW, StatusCodes::STATUS_404);
                 }
+                if (defined('RATE_LIMIT_DIFF_TIME')) {
+                    if (false !== strpos($refDoc, '@repeatlimit')) {
+                        preg_match('/@repeatlimit(.+)/', $refDoc, $matches);
+                        $diffTime = intval($matches[1]);
+                        $diffTime = $diffTime > 0 ? $diffTime : 2000;
+                        if (RATE_LIMIT_DIFF_TIME < $diffTime) {
+                            json(null, StatusCodes::getMessage(StatusCodes::REQUEST_REPEAT), StatusCodes::REQUEST_REPEAT, StatusCodes::STATUS_OK);
+                        }
+                    }
+                }
             }
             if (false !== strpos($refDoc, '@login')) {
                 $referer->_G['user'] = $referer->loginCheck();
@@ -494,7 +504,6 @@ class ComposerAutoloader {
 
 class DebugLog {
 
-    private static $start_time = 0;
     private static $start_mem = 0;
 
     private static $info = [];
@@ -503,9 +512,14 @@ class DebugLog {
     private static $curl = [];
     private static $mysql = [];
 
+    private static $debug = true;
+
     public static function _init () {
-        self::$start_time = microtime_float();
         self::$start_mem = memory_get_usage();
+    }
+
+    public static function _debug ($debug = true) {
+        self::$debug = $debug;
     }
 
     public static function _error ($error) {
@@ -619,14 +633,14 @@ class DebugLog {
     }
 
     private function writeLogs() {
-        if (DEBUG_LEVEL >= 3) {
-            self::_header();
-        }
-        if (DEBUG_LEVEL >= 2) {
-            self::_post();
-        }
-        if (DEBUG_LEVEL >= 1) {
-            if ($_SERVER['HTTP_USER_AGENT'] != 'Plan-Task') {
+        if (self::$debug) {
+            if (DEBUG_LEVEL >= 3) {
+                self::_header();
+            }
+            if (DEBUG_LEVEL >= 2) {
+                self::_post();
+            }
+            if (DEBUG_LEVEL >= 1) {
                 self::_log(array_merge(self::$info, self::$curl, self::$mysql), 'debug', true, 'Ym_Ymd', true, true);
             }
         }
@@ -641,7 +655,7 @@ class DebugLog {
             array_splice($message, 0, 0, '[' . date('Y-m-d H:i:s', TIMESTAMP) . ']' );
         }
         if ($delay) {
-            $message[] = '[RunTime:' . round(microtime_float() - self::$start_time, 2) . 's]';
+            $message[] = '[RunTime:' . round(microtime(true) - MICROTIME, 2) . 's]';
         }
         if ($mem) {
             $message[] = '[Mem:' . round((memory_get_usage() - self::$start_mem) / 1024, 2) . 'k]';
@@ -1028,51 +1042,48 @@ class RateLimit
     protected static function mysql($key, $minNum, $hourNum, $dayNum)
     {
         $key = md5($key);
-        $limitVal = \app\library\DB::getInstance()->table('__tablepre__ratelimit')->field('min_num,hour_num,day_num,time,version')->where(['skey' => $key])->find();
+        $limitVal = \app\library\DB::getInstance()->table('__tablepre__ratelimit')->field('min_num,hour_num,day_num,time,microtime,version')->where(['skey' => $key])->find();
         $param = [
             'skey' => $key,
             'min_num' => 1,
             'hour_num' => 1,
             'day_num' => 1,
-            'time' => TIMESTAMP
+            'time' => TIMESTAMP,
+            'microtime' => intval((MICROTIME - intval(MICROTIME)) * 1000)
         ];
         if ($limitVal) {
+            define('RATE_LIMIT_DIFF_TIME', intval((MICROTIME - ($limitVal['time'] + $limitVal['microtime'] / 1000)) * 1000));
             $currentTime = date('YmdHi', TIMESTAMP);
             $lastTime = date('YmdHi', $limitVal['time']);
-            if ($minNum > 0) {
-                if ($currentTime == $lastTime) {
-                    if ($limitVal['min_num'] >= $minNum) {
-                        return false;
-                    }
-                    $param['min_num'] = ['min_num+1'];
+            if ($currentTime == $lastTime) {
+                if ($limitVal['min_num'] >= $minNum) {
+                    return false;
                 }
+                $param['min_num'] = ['min_num+1'];
             }
-            if ($hourNum > 0) {
-                if (substr($currentTime, 0, 10) == substr($lastTime, 0, 10)) {
-                    if ($limitVal['hour_num'] >= $hourNum) {
-                        return false;
-                    }
-                    $param['hour_num'] = ['hour_num+1'];
+            if (substr($currentTime, 0, 10) == substr($lastTime, 0, 10)) {
+                if ($limitVal['hour_num'] >= $hourNum) {
+                    return false;
                 }
+                $param['hour_num'] = ['hour_num+1'];
             }
-            if ($dayNum > 0) {
-                if (substr($currentTime, 0, 8) == substr($lastTime, 0, 8)) {
-                    if ($limitVal['day_num'] >= $dayNum) {
-                        return false;
-                    }
-                    $param['day_num'] = ['day_num+1'];
+            if (substr($currentTime, 0, 8) == substr($lastTime, 0, 8)) {
+                if ($limitVal['day_num'] >= $dayNum) {
+                    return false;
                 }
+                $param['day_num'] = ['day_num+1'];
             }
             $param['version'] = ['version+1'];
             unset($param['skey']);
             if (!\app\library\DB::getInstance()->update('__tablepre__ratelimit', $param, ['skey' => $key, 'version' => $limitVal['version']])) {
-                usleep(mt_rand(10000, 1000000)); // 10ms-1000ms
+                usleep(mt_rand(200000, 1200000)); // 200ms-1200ms
             }
         } else {
             if (!\app\library\DB::getInstance()->insert('__tablepre__ratelimit', $param)) {
-                usleep(mt_rand(10000, 1000000)); // 10ms-1000ms
+                usleep(mt_rand(200000, 1200000)); // 200ms-1200ms
             }
         }
+        unset($limitVal);
         return true;
     }
 }
@@ -1093,8 +1104,9 @@ class StatusCodes
     const USER_NOT_LOGIN_ERROR               = 3010;
 
     const ACCESS_NUM_OVERFLOW                = 4001;
+    const REQUEST_REPEAT                     = 4002;
 
-    static $message = array(
+    static $message = [
         200  => '成功',
         500  => '未知错误',
         3001 => 'token验证失败',
@@ -1103,8 +1115,9 @@ class StatusCodes
         3004 => '签名错误',
         3005 => '请求方法错误',
         3010 => '用户未登录',
-        4001 => '访问次数过多'
-    );
+        4001 => '访问次数过多',
+        4002 => '你已提交请求'
+    ];
 
     public static function getMessage($code) {
         return isset(self::$message[$code]) ? self::$message[$code] : '';
