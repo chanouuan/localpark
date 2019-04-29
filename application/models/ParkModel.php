@@ -146,6 +146,8 @@ class ParkModel extends Crud {
     protected function correctionCarNumber ($node_id, $original_car_number, $car_number, array $scene, $errorCount)
     {
         $original_car_number = $original_car_number ? $original_car_number : $car_number;
+        // 获取上个节点
+
         // 纠正失败
         // todo 异常车牌处理
     }
