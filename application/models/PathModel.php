@@ -36,4 +36,26 @@ class PathModel extends Crud {
         return $list;
     }
 
+    /**
+     * 获取指定节点的上一个节点
+     */
+    public function getLastNodeId ($node_id, $depth = 1)
+    {
+        $list = $this->select('JSON_CONTAINS(nodes,"' . $node_id . '")', 'id,nodes');
+        $nodes = [];
+        if ($list) {
+            foreach ($list as $k => $v) {
+                $v['nodes'] = json_decode($v['nodes'], true);
+                if ($key = array_search($node_id, $v['nodes'])) {
+                    if (isset($v['nodes'][$key - $depth])) {
+                        $nodes[] = $v['nodes'][$key - $depth];
+                    }
+                }
+            }
+            unset($list);
+            $nodes = array_unique(array_filter($nodes));
+        }
+        return $nodes;
+    }
+
 }

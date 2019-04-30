@@ -43,4 +43,17 @@ class CarModel extends Crud {
             'paths' => (new PathModel())->getPathNodeById(array_column($carPaths, 'path_id'))
         ];
     }
+
+    /**
+     * 获取所有不在场的会员车牌
+     * @return array
+     */
+    public function getAllNoEntryCarNumber ()
+    {
+        $list = $this->select(['is_entry' => 0], 'car_number');
+        if ($list) {
+            $list = array_column($list, 'car_number');
+        }
+        return $list;
+    }
 }

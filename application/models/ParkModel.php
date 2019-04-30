@@ -64,7 +64,7 @@ class ParkModel extends Crud {
                 // 1.无入场信息
                 // 2.车牌识别错
                 // todo 车牌纠正
-                $post = array_merge($post, $this->correctionCarNumber($post['node_id'], $post['original_car_number'], $post['car_number'], ['NO_ENTRY'], $post['error_count'] ++));
+                $post = array_merge($post, $this->correctionCarNumber($post['node_id'], $post['original_car_number'], $post['car_number'], ['NO_ENTRY', 'NO_START_NODE'], $post['error_count'] ++));
                 return $this->pass($post);
             } else {
                 // 如果是起点
@@ -113,7 +113,7 @@ class ParkModel extends Crud {
             return $this->pass($post);
         }
 
-        // 获取当前节点是节点的路径
+        // 获取当前节点是中点的路径
         $nodePaths = $this->diffPath($carPaths['paths'], $post['node_id']);
         if (empty($nodePaths)) {
             return error('此通道禁止通行');
@@ -124,7 +124,7 @@ class ParkModel extends Crud {
         if (empty($correctPaths)) {
             // 1.车牌识别错
             // todo 车牌纠正
-            $post = array_merge($post, $this->correctionCarNumber($post['node_id'], $post['original_car_number'], $post['car_number'], ['ENTRY', 'PATH_ERROR'], $post['error_count'] ++));
+            $post = array_merge($post, $this->correctionCarNumber($post['node_id'], $post['original_car_number'], $post['car_number'], ['ENTRY', 'MIDDLE_NODE', 'PATH_ERROR'], $post['error_count'] ++));
             return $this->pass($post);
         }
 
@@ -136,6 +136,10 @@ class ParkModel extends Crud {
 
     /**
      * 校正车牌
+     * 1.NO_ENTRY 无入场 NO_START_NODE 不是起点
+     * 2.ENTRY    有入场 END_NODE      是终点   PATH_ERROR 路径错误
+     * 3.ENTRY    有入场 START_NODE    是起点
+     * 4.ENTRY    有入场 MIDDLE_NODE   是中点   PATH_ERROR 路径错误
      * @param $node_id 当前节点
      * @param $original_car_number 原始车牌号
      * @param $car_number 车牌号
@@ -143,13 +147,80 @@ class ParkModel extends Crud {
      * @param $errorCount 校正次数
      * @return array
      */
-    protected function correctionCarNumber ($node_id, $original_car_number, $car_number, array $scene, $errorCount)
+    protected function correctionCarNumber ($node_id, $original_car_number, $car_number, array $scene, $errorCount = 1)
     {
         $original_car_number = $original_car_number ? $original_car_number : $car_number;
-        // 获取上个节点
 
-        // 纠正失败
-        // todo 异常车牌处理
+        // 获取上个节点
+        $lastNodeId = $this->pathModel->getLastNodeId($node_id, $errorCount);
+        if ($lastNodeId) {
+            // 获取上个节点的入场车
+            $entryCar = $this->entryModel->getEntryCurrentNodeCar($lastNodeId);
+            if (empty($entryCar)) {
+                return $this->correctionCarNumber($node_id, $original_car_number, $car_number, $scene, $errorCount + 1);
+            }
+        } else {
+            if ($errorCount > 1) {
+                // 当前节点不是起点
+                // 获取所有入场车
+                $entryCar = $this->entryModel->getAllEntryCar();
+            } else {
+                // 当前节点是起点
+                // 获取所有不在场的会员车
+                $entryCar = $this->carModel->getAllNoEntryCarNumber();
+            }
+            if (empty($entryCar)) {
+                // 纠正失败
+                return [
+                    'original_car_number' => $original_car_number,
+                    'car_number' => $car_number,
+                    'errorCount' => $errorCount
+                ];
+            }
+        }
+
+        // 去掉和原车牌相同的车牌
+        if (false !== ($key = array_search($original_car_number, $entryCar))) {
+            unset($entryCar[$key]);
+        }
+
+        if (empty($entryCar)) {
+            // 纠正失败
+            return [
+                'original_car_number' => $original_car_number,
+                'car_number' => $car_number,
+                'errorCount' => $errorCount
+            ];
+        }
+
+        $newCarNumber = $this->similarCarNumber($original_car_number, $entryCar);
+
+        if (empty($newCarNumber)) {
+            // 纠正失败
+            return [
+                'original_car_number' => $original_car_number,
+                'car_number' => $car_number,
+                'errorCount' => $errorCount
+            ];
+        }
+
+        // 纠正成功
+        return [
+            'original_car_number' => $original_car_number,
+            'car_number' => $newCarNumber,
+            'errorCount' => $errorCount
+        ];
+    }
+
+    /**
+     * 比较两个车牌相似度
+     * @param $first 第一个车牌
+     * @param $second 第二个车牌
+     * @return float 相似度百分比
+     */
+    protected function similarCarNumber ($first, $second)
+    {
+        return 0.0;
     }
 
     /**
