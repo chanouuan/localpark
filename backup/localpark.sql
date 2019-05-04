@@ -3,15 +3,15 @@
 
  Source Server         : localhost_3306
  Source Server Type    : MySQL
- Source Server Version : 80015
+ Source Server Version : 50720
  Source Host           : localhost:3306
  Source Schema         : localpark
 
  Target Server Type    : MySQL
- Target Server Version : 80015
+ Target Server Version : 50720
  File Encoding         : 65001
 
- Date: 30/04/2019 19:37:39
+ Date: 04/05/2019 23:21:48
 */
 
 SET NAMES utf8mb4;
@@ -23,10 +23,10 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS `car_number`;
 CREATE TABLE `car_number`  (
   `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-  `car_number` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
-  `similar` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `car_number` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+  `similar` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 61103 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of car_number
@@ -61064,7 +61064,7 @@ CREATE TABLE `chemi_car`  (
   `status` tinyint(1) NULL DEFAULT 1 COMMENT '状态 1正常 0禁用',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `car_number`(`car_number`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of chemi_car
@@ -61100,14 +61100,15 @@ CREATE TABLE `chemi_entry`  (
   `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   `car_type` tinyint(4) NULL DEFAULT NULL COMMENT '车辆类型',
   `car_number` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '车牌号',
+  `paths` json NULL COMMENT '当前路径',
   `current_node_id` mediumint(8) UNSIGNED NULL DEFAULT NULL COMMENT '当前节点ID',
-  `last_nodes` json NULL COMMENT '节点记录 {{node_id:time}}',
+  `last_nodes` json NULL COMMENT '节点记录 {{node_id:{time:time}}}',
   `update_time` datetime(0) NULL DEFAULT NULL COMMENT '更新时间',
   `create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `car_number`(`car_number`) USING BTREE,
   INDEX `current_node_id`(`current_node_id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '入场车辆' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '入场车辆' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for chemi_node
@@ -61175,7 +61176,7 @@ CREATE TABLE `pro_hashcheck`  (
   `hash` char(8) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '唯一标识',
   `dateline` int(10) UNSIGNED NULL DEFAULT NULL COMMENT '修改时间',
   PRIMARY KEY (`hash`) USING BTREE
-) ENGINE = MyISAM AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_general_ci COMMENT = '验证唯一性记录表' ROW_FORMAT = Fixed;
+) ENGINE = MyISAM CHARACTER SET = utf8 COLLATE = utf8_general_ci COMMENT = '验证唯一性记录表' ROW_FORMAT = Fixed;
 
 -- ----------------------------
 -- Table structure for pro_session
@@ -61195,7 +61196,7 @@ CREATE TABLE `pro_session`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `u`(`userid`, `clienttype`) USING BTREE,
   INDEX `u1`(`userid`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
 -- ----------------------------
 -- Table structure for pro_smscode
@@ -61211,6 +61212,6 @@ CREATE TABLE `pro_smscode`  (
   `day_fc` tinyint(2) UNSIGNED NULL DEFAULT 0 COMMENT '天级限制',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `tel`(`tel`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci COMMENT = '短信验证码' ROW_FORMAT = Compact;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_general_ci COMMENT = '短信验证码' ROW_FORMAT = Compact;
 
 SET FOREIGN_KEY_CHECKS = 1;

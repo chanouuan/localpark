@@ -39,23 +39,26 @@ class PathModel extends Crud {
     /**
      * 获取指定节点的上一个节点
      */
-    public function getLastNodeId ($node_id, $depth = 1)
+    public function getLastNodePaths ($node_id, $depth = 1)
     {
-        $list = $this->select('JSON_CONTAINS(nodes,"' . $node_id . '")', 'id,nodes');
+        if (!$list = $this->select('JSON_CONTAINS(nodes,"' . $node_id . '")', 'id,nodes')) {
+            return [];
+        }
         $nodes = [];
-        if ($list) {
-            foreach ($list as $k => $v) {
-                $v['nodes'] = json_decode($v['nodes'], true);
-                if ($key = array_search($node_id, $v['nodes'])) {
-                    if (isset($v['nodes'][$key - $depth])) {
-                        $nodes[] = $v['nodes'][$key - $depth];
-                    }
+        foreach ($list as $k => $v) {
+            $v['nodes'] = json_decode($v['nodes'], true);
+            if ($key = array_search($node_id, $v['nodes'])) {
+                if (isset($v['nodes'][$key - $depth])) {
+                    $nodes['paths'][] = $v['id'];
+                    $nodes['nodes'][] = $v['nodes'][$key - $depth];
                 }
             }
-            unset($list);
-            $nodes = array_unique(array_filter($nodes));
         }
-        return $nodes;
+        if (isset($nodes['nodes'])) {
+            $nodes['nodes'] = array_unique(array_filter($nodes['nodes']));
+        }
+        unset($list);
+        return isset($nodes['nodes']) && $nodes['nodes'] ? $nodes : [];
     }
 
 }

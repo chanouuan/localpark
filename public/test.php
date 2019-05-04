@@ -29,28 +29,83 @@ $all_car_number = \app\library\DB::getInstance()->table('car_number')->select();
 $all_car_number = array_column($all_car_number, 'car_number');
 function similarCarNumber ($first, $second)
 {
-    $result = [];
+    $weight = [
+        '贵' => ['鲁'],
+        '鲁' => ['贵'],
+        '0' => ['D', '6'],
+        '1' => ['J', 'L'],
+        '2' => ['Z'],
+        '3' => ['8'],
+        '5' => ['B'],
+        '6' => ['C', '8', '0'],
+        '8' => ['B', '3', '6'],
+        'B' => ['5', '8'],
+        'C' => ['G'],
+        'D' => ['0'],
+        'G' => ['C'],
+        'J' => ['1'],
+        'L' => ['1'],
+        'Z' => ['2']
+    ];
+    $firstWord = mb_str_split($first);
+    $firstWordLength = count($firstWord);
+    $secondLength = count($second);
+    $weightVector = round(1 / $firstWordLength, $firstWordLength);
+    $firstNumber = substr($first, 3);
+    $firstNumberLength = strlen($firstNumber);
+    $minMatchPercent = 2;
+    $similarResult = [];
+    // 编辑距离
     foreach ($second as $v) {
-        $result[$v] = [
-            similar_text($first, $v),
-            levenshtein($first, $v)
+        $secondNumber = substr($v, 3);
+        if (strlen($secondNumber) == $firstNumberLength) {
+            $similarPercent = levenshtein($firstNumber, $secondNumber);
+            if ($similarPercent >= $minMatchPercent) {
+                $similarResult[$v] = $similarPercent;
+            }
+        }
+    }
+    unset($second);
+    if (empty($similarResult)) {
+        return error('共查询' . $secondLength . '个车牌，未发现编辑距离大于' . $minMatchPercent . '的相似车牌');
+    }
+    asort($similarResult);
+    $similarResult = array_slice($similarResult, 0, 10);
+    // 相似度
+    foreach ($similarResult as $k => $v) {
+        similar_text($first, $k, $similarPercent);
+        $similarResult[$k] = [
+            $k, $v, round($similarPercent, $firstWordLength)
         ];
     }
-    array_multisort($result, SORT_DESC, $edition, SORT_ASC , $result);
-    arsort($similarArr);
-    print_r(array_slice($similarArr, 0, 10));
-    asort($levArr);
-    print_r(array_slice($levArr, 0, 10));
-    return;
-    echo $similar;
-    echo '<br>';
-    echo $similarRes;
-    echo '<br>';
-    echo $len;
-    echo '<br>';
-    echo $lenRes;
-    echo '<br>';
-    return 0.0;
+    $similarResult = array_values($similarResult);
+    // 权重
+    foreach ($similarResult as $k => $v) {
+        $splitCarNumber = mb_str_split($v[0]);
+        $weightValue = [];
+        foreach ($splitCarNumber as $kk => $vv) {
+            $char = $firstWord[$kk];
+            if (!isset($char)) {
+                continue;
+            }
+            $weightScore = 0;
+            if ($vv == $char) {
+                $weightScore = 1;
+            } else if (isset($weight[$char])) {
+                if (false !== ($weightKey = array_search($vv, $weight[$char]))) {
+                    $weightScore = (99 - $weightKey) / 100;
+                }
+            }
+            $weightValue[] = round($weightScore * $weightVector, $firstWordLength);
+        }
+        $similarResult[$k][] = array_sum($weightValue);
+        $similarResult[$k][] = implode(' + ', $weightValue);
+    }
+    array_multisort(array_column($similarResult, 3), SORT_DESC, SORT_NUMERIC, $similarResult);
+    // 权重大于0.85
+    if ($similarResult[0][2] < 0.85) {
+        return error($similarResult, '共查询' . $secondLength . '个车牌，最大权重' . $similarResult[0][2] . '不达标');
+    }
+    return success($similarResult, '共查询' . $secondLength . '个车牌，找到相似车牌“' . $similarResult[0][0] . '”，相似度' . $similarResult[0][2] . '，权重值' . $similarResult[0][3]);
 }
-
-similarCarNumber('贵A25C56', $all_car_number);
+print_r(similarCarNumber('云A25JJJ', $all_car_number));
