@@ -20,9 +20,9 @@ class EntryModel extends Crud {
         ], 'id,car_type,paths,current_node_id,last_nodes,update_time');
         if ($info) {
             // 当前路径
-            $info['paths'] = json_decode($info['paths'], true);
-            // 节点记录 {{node_id:{time:time}}}
-            $info['last_nodes'] = json_decode($info['last_nodes'], true);
+            $info['paths'] = $info['paths'] ? json_decode($info['paths'], true) : [];
+            // 节点记录 [{"node_id":node_id,"time":time}]
+            $info['last_nodes'] = $info['last_nodes'] ? json_decode($info['last_nodes'], true) : [];
         }
         return $info;
     }
@@ -38,25 +38,42 @@ class EntryModel extends Crud {
         if (!$entryCarInfo = $this->getCarInfo($car_number)) {
             return false;
         }
+        if ($entryCarInfo['current_node_id'] == $node_id) {
+            return false;
+        }
         // 判断哪条路径可以到达当前节点node_id
-        // 如果有多条路径可以到达，就只取其中一条，所以这里用find
-        if (!$pathInfo = $this->getDb()->table('chemi_path')->field('id,nodes')->where('id in (' . implode(',', $entryCarInfo['paths']) . ') and JSON_CONTAINS(nodes,"' . $node_id . '")')->find()) {
+        if (!$paths = $this->getDb()->table('chemi_path')->field('id,nodes')->where('id in (' . implode(',', $entryCarInfo['paths']) . ') and JSON_CONTAINS(nodes,"' . $node_id . '")')->select()) {
             return false;
         }
-        // 获取到达当前节点，需要经过的点
-        $pathInfo['nodes'] = json_decode($pathInfo['nodes'], true);
-        if (false === ($currentNodekey = array_search($entryCarInfo['current_node_id'], $pathInfo['nodes']))) {
-            return false;
+        // 如果有多条路径可以到达，取路径最短的一条
+        $pathId = 0;
+        $passNodes = [];
+        foreach ($paths as $k => $v) {
+            $v['nodes'] = json_decode($v['nodes'], true);
+            if (false === ($currentNodekey = array_search($entryCarInfo['current_node_id'], $v['nodes']))) {
+                continue;
+            }
+            if (!$nodeKey = array_search($node_id, $v['nodes'])) {
+                // 当前节点是起点
+                continue;
+            }
+            if ($nodeKey - $currentNodekey <= 1) {
+                // 节点无需修补
+                continue;
+            }
+            // 获取到达当前节点，需要经过的点
+            $pass = array_slice($v['nodes'], $currentNodekey + 1, $nodeKey - $currentNodekey - 1);
+            if (empty($pass)) {
+                continue;
+            }
+            if ($passNodes) {
+                if (count($pass) >= count($passNodes)) {
+                    continue;
+                }
+            }
+            $passNodes = $pass;
+            $pathId = $v['id'];
         }
-        if (!$nodeKey = array_search($node_id, $pathInfo['nodes'])) {
-            // 当前节点是起点
-            return true;
-        }
-        if ($nodeKey - $currentNodekey <= 1) {
-            // 节点无需修补
-            return true;
-        }
-        $passNodes = array_slice($pathInfo['nodes'], $currentNodekey + 1, $nodeKey - $currentNodekey - 1);
         if (empty($passNodes)) {
             return false;
         }
@@ -64,18 +81,21 @@ class EntryModel extends Crud {
         $diffTime = intval((TIMESTAMP - strtotime($entryCarInfo['update_time'])) / (count($passNodes) + 1));
         foreach ($passNodes as $k => $v) {
             $entryCarInfo['last_nodes'][] = [
-                $v => [
-                    'time' => date('Y-m-d H:i:s', $entryCarInfo['update_time'] + ($diffTime * ($k + 1))),
-                    'auto' => 1
-                ]
+                'node_id' => $v,
+                'time' => date('Y-m-d H:i:s', $entryCarInfo['update_time'] + ($diffTime * ($k + 1))),
+                'auto' => 1
             ];
         }
-        return $this->getDb()->update($this->table, [
-            'paths' => json_encode([$pathInfo['id']]),
+        $param = [
+            'paths' => json_encode([$pathId]),
             'current_node_id' => end($passNodes),
             'last_nodes' => json_encode($entryCarInfo['last_nodes']),
             'update_time' => date('Y-m-d H:i:s', TIMESTAMP)
-        ], 'id = '. $entryCarInfo['id']);
+        ];
+        if (!$this->getDb()->update($this->table, $param, 'id = '. $entryCarInfo['id'])) {
+            return false;
+        }
+        return $param;
     }
 
     /**
@@ -91,7 +111,7 @@ class EntryModel extends Crud {
         ];
         $param = [];
         foreach ($path_id as $k => $v) {
-            $param[] = 'JSON_CONTAINS(paths,' . $v . ')';
+            $param[] = 'JSON_CONTAINS(paths,"' . $v . '")';
         }
         $param = '(' . implode(' OR ', $param) . ')';
         $condition[] = $param;
@@ -113,6 +133,15 @@ class EntryModel extends Crud {
             $list = array_column($list, 'car_number');
         }
         return $list;
+    }
+
+    /**
+     * 删除入场车
+     * @return bool
+     */
+    public function removeEntryCar ($condition)
+    {
+        return $this->getDb()->delete($this->table, $condition);
     }
 
 }

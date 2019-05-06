@@ -2,14 +2,16 @@
 
 namespace app\common;
 
-class CarType
+class AbnormalCarPassWay
 {
-    const TEMP_CAR   = 1;
-    const MEMBER_CAR = 2;
+    const AUTO_PASS   = 1;
+    const CHARGE      = 2;
+    const MANUAL_PASS = 3;
 
     static $message = [
-        1 => '临时车',
-        2 => '会员车'
+        1 => '自动放行',
+        2 => '异常收费',
+        3 => '手动放行'
     ];
 
     public static function getMessage ($code) {

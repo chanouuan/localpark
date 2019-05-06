@@ -108,4 +108,6 @@ function similarCarNumber ($first, $second)
     }
     return success($similarResult, '共查询' . $secondLength . '个车牌，找到相似车牌“' . $similarResult[0][0] . '”，相似度' . $similarResult[0][2] . '，权重值' . $similarResult[0][3]);
 }
-print_r(similarCarNumber('云A25JJJ', $all_car_number));
+
+print_r(array_intersect(['NO_ENTRY', 'NO_START_NODE', 1,2], [3]));
+//print_r(similarCarNumber('云A25JJJ', $all_car_number));
