@@ -19,4 +19,14 @@ class NodeModel extends Crud {
         return $nodeInfo;
     }
 
+    /**
+     * 获取节点信息
+     * @param $node_id 节点ID
+     * @return array
+     */
+    public function getNode ($node_id)
+    {
+        return $this->find(['id' => $node_id], 'id,temp_car_count,temp_car_left');
+    }
+
 }

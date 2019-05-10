@@ -5,6 +5,7 @@ namespace app\models;
 use Crud;
 use app\common\CarType;
 use app\common\AbnormalCarPassWay;
+use app\common\PassType;
 
 class ParkModel extends Crud {
 
@@ -24,18 +25,16 @@ class ParkModel extends Crud {
 
     /**
      * 车辆进出场
-     * @param node_id
-     * @param original_car_number
-     * @param car_number
-     * @param error_count
-     * @param error_scene
-     * @param correction_record_id
+     * @param onduty_id 值班员
+     * @param node_id 进出场节点
+     * @param car_number 车牌号
      * @return array
      */
     public function pass ($post)
     {
         // 节点
         $post['node_id'] = intval($post['node_id']);
+        $post['correction_record_id'] = intval($post['correction_record_id']);
 
         // 车牌号验证
         if (!check_car_license($post['car_number'])) {
@@ -43,11 +42,11 @@ class ParkModel extends Crud {
         }
 
         // 验证节点
-        if (!$nodeInfo = $this->nodeModel->get($post['node_id'])) {
+        if (!$nodeInfo = $this->nodeModel->getNode($post['node_id'])) {
             return error('节点未找到');
         }
 
-        // 查询车牌类型 (临时车、会员车 ...)
+        // 查询车辆类型
         $carPaths = $this->getCarType($post['car_number']);
 
         if (empty($carPaths['paths'])) {
@@ -77,7 +76,7 @@ class ParkModel extends Crud {
                 // 如果不是起点
                 // 1.无入场信息
                 // 2.车牌识别错
-                // todo 车牌纠正
+                // todo 车牌纠错
                 $correctionResult = $this->correctionLogic($post, ['NO_ENTRY', 'NO_START_NODE']);
                 $post = array_merge($post, $correctionResult['result']);
                 if ($correctionResult['errorcode'] !== 0) {
@@ -92,14 +91,15 @@ class ParkModel extends Crud {
                 // 2.会员车失效后是否允许入场 (月卡过期、余额不足)
                 // 3.多卡多车，附属车位满后是否允许入场
                 // 4.有可能以错车牌入场
-                // todo 入场确认
+                // todo 入场
+                return $this->entry($post, $nodeInfo, $startPaths, $carPaths);
             }
         }
 
         // 每个节点状态
-        // 1.起点      不在场
-        // 2.节点      在场
-        // 3.终点      在场
+        // 1.起点 不在场
+        // 2.节点 在场
+        // 3.终点 在场
         // 4.终点&起点 在场
 
         // 判断是否终点
@@ -108,7 +108,7 @@ class ParkModel extends Crud {
             $correctPaths = $this->verifyPath($post['node_id'], $endPaths, $entryCarInfo['last_nodes']);
             if (empty($correctPaths)) {
                 // 1.车牌识别错
-                // todo 车牌纠正
+                // todo 车牌纠错
                 $correctionResult = $this->correctionLogic($post, ['ENTRY', 'END_NODE', 'PATH_ERROR']);
                 $post = array_merge($post, $correctionResult['result']);
                 if ($correctionResult['errorcode'] !== 0) {
@@ -117,19 +117,31 @@ class ParkModel extends Crud {
                 }
                 return $this->pass($post);
             }
-            // todo 出场确认&计费
-            // 判断是否起点
-            if ($startPaths) {
-                // 既是终点又是起点
-                return $this->pass($post);
+            // todo 出场&计费
+            $outResult = $this->out($post, $entryCarInfo, $correctPaths, $carPaths);
+            if ($outResult['errorcode'] !== 0) {
+                return $outResult;
             }
+            if (empty($startPaths)) {
+                // todo 起竿&语音播报
+                return $outResult;
+            }
+            // 既是终点又是起点
+            return $this->pass([
+                'node_id' => $post['node_id'], 'car_number' => $post['car_number']
+            ]);
         }
 
         // 判断是否起点
         if ($startPaths) {
+            // 防止重复起竿 (起竿后车辆不通过)
+            if ($entryCarInfo['current_node_id'] == $post['node_id']) {
+                // todo 起竿&语音播报
+                return success($entryCarInfo['broadcast']);
+            }
             // 1.车牌识别错
             // 2.上次出场异常 (系统错误、跟车...)
-            // todo 车牌纠正
+            // todo 车牌纠错
             $correctionResult = $this->correctionLogic($post, ['ENTRY', 'START_NODE']);
             $post = array_merge($post, $correctionResult['result']);
             if ($correctionResult['errorcode'] !== 0) {
@@ -143,7 +155,7 @@ class ParkModel extends Crud {
         $correctPaths = $this->verifyPath($post['node_id'], $midPaths, $entryCarInfo['last_nodes']);
         if (empty($correctPaths)) {
             // 1.车牌识别错
-            // todo 车牌纠正
+            // todo 车牌纠错
             $correctionResult = $this->correctionLogic($post, ['ENTRY', 'MIDDLE_NODE', 'PATH_ERROR']);
             $post = array_merge($post, $correctionResult['result']);
             if ($correctionResult['errorcode'] !== 0) {
@@ -153,14 +165,304 @@ class ParkModel extends Crud {
             return $this->pass($post);
         }
 
-        // todo 出场确认&计费
-        // 是节点起竿正常通行
-
-        return success([]);
+        // todo 起竿&语音播报
+        return $this->mid($post, $nodeInfo, $entryCarInfo, $correctPaths, $carPaths);
     }
 
     /**
-     * 车牌纠正待处理
+     * 中场
+     * @param $post {node_id:节点ID,car_number:车牌号}
+     * @param $nodeInfo 节点信息
+     * @param $entryCarInfo 入场信息
+     * @param $paths 正确路径
+     * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
+     * @return array
+     */
+    protected function mid ($post, $nodeInfo, $entryCarInfo, $paths, $carPaths)
+    {
+        $allowPass = true;
+
+        // 临时车通行
+        if ($carPaths['car_type'] == CarType::TEMP_CAR) {
+            // 临时车车位数限制
+            if ($nodeInfo['temp_car_count'] > 0 && $nodeInfo['temp_car_left'] <= 0) {
+                $errorMessage = CarType::getMessage(CarType::TEMP_CAR) . '车位已满';
+                $allowPass = false;
+            }
+        }
+
+        // 弹框确认或自动起竿
+        if (!$allowPass) {
+            return error($errorMessage);
+        }
+
+        // 保存入场信息
+        if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
+            'paths' => json_encode(array_column($paths, 'id')),
+            'current_node_id' => $post['node_id'],
+            'last_nodes' => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'])),
+            'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
+            'pass_type' => PassType::NORMAL_PASS,
+            'onduty_id' => $post['onduty_id'],
+            'broadcast' => '欢迎光临'
+        ])) {
+            return error('中场错误，请重试');
+        }
+
+        return success('欢迎光临');
+    }
+
+    /**
+     * 出场&计费
+     * @param $post {node_id:节点ID,car_number:车牌号}
+     * @param $entryCarInfo 入场信息
+     * @param $paths 正确路径
+     * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
+     * @return array
+     */
+    protected function out ($post, $entryCarInfo, $paths, $carPaths)
+    {
+        $entryCarInfo['last_nodes'][] = [
+            'node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)
+        ];
+        $parameter = [
+            '当前时间' => TIMESTAMP,
+            '上次入场时间' => strtotime($entryCarInfo['update_time']),
+            '上次出场时间' => 0
+        ];
+        if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
+            // 会员车
+            $parameter['上次出场时间'] = $this->carModel->getLastOutParkTime($post['car_number']);
+        }
+        foreach ($entryCarInfo['last_nodes'] as $k => $v) {
+            $parameter['节点' . ($k + 1) . 'ID'] = $v['node_id'];
+            $parameter['节点' . ($k + 1) . '入场时间'] = strtotime($v['time']);
+            if ($k > 0) {
+                $parameter['节点' . $k . '-' . ($k + 1) . '停留时间'] = strtotime($v['time']) - strtotime($entryCarInfo['last_nodes'][$k - 1]['time']);
+            }
+        }
+
+        // 临时车出场
+        if ($carPaths['car_type'] == CarType::TEMP_CAR) {
+            // 查找最便宜的一条路
+            $simplePathId = null;
+            $settlementMoney = null;
+            $passIdentity = CarType::TEMP_CAR;
+            foreach ($paths as $k => $v) {
+                if (false !== ($calculationMoney = $this->calculationCode($parameter, $v['calculation_code']))) {
+                    if (empty($simplePathId) || $settlementMoney > $calculationMoney) {
+                        $simplePathId = $v['id'];
+                        $settlementMoney = $calculationMoney;
+                        if ($settlementMoney === 0) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 会员车出场
+        if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
+            // 去掉无效路径
+            $paths = array_column($paths, null, 'id');
+            foreach ($carPaths['car_path'] as $k => $v) {
+                if (!isset($paths[$v['path_id']])) {
+                    unset($carPaths['car_path'][$k]);
+                }
+            }
+            // 会员车状态
+            $memberCars = $this->carModel->validationMemberCarType(array_column($carPaths['car_path'], 'car_id'));
+            $memberCars = array_column($memberCars, null, 'id');
+            // 查找最便宜的一条路
+            $simplePathId = null;
+            $settlementMoney = null;
+            $passIdentity = null;
+            foreach ($carPaths['car_path'] as $k => $v) {
+                $memberCarInfo = $memberCars[$v['car_id']];
+                if (!isset($memberCarInfo)) {
+                    continue;
+                }
+                $pathInfo = $paths[$v['path_id']];
+                $parameter['车辆类型'] = CarType::getMessage($memberCarInfo['car_type']);
+                $parameter['available'] = $entryCarInfo['entry_car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
+                $parameter['balance'] = $memberCarInfo['balance'];
+                if (false !== ($calculationMoney = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
+                    if (empty($simplePathId) || $settlementMoney > $calculationMoney) {
+                        $simplePathId = $v['path_id'];
+                        $settlementMoney = $calculationMoney;
+                        $passIdentity = $memberCarInfo['car_type'];
+                        if ($settlementMoney === 0) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 结算金额异常
+        if (empty($simplePathId)) {
+            return error('结算金额异常');
+        }
+
+        // 结算金额大于零，弹框确认收费，否则自动起竿
+        $passType = PassType::NORMAL_PASS;
+        if ($settlementMoney > 0) {
+            $passType = PassType::WAIT_PASS;
+        }
+
+        // 保存入场信息
+        if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
+            'out_car_type' => $passIdentity,
+            'paths' => json_encode([$simplePathId]),
+            'money' => $settlementMoney,
+            'current_node_id' => $post['node_id'],
+            'last_nodes' => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'])),
+            'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
+            'pass_type' => $passType,
+            'onduty_id' => $post['onduty_id'],
+            'broadcast' => '欢迎光临'
+        ])) {
+            return error('出场错误，请重试');
+        }
+
+        return success('欢迎光临');
+    }
+
+    /**
+     * 入场
+     * @param $post {node_id:节点ID,car_number:车牌号}
+     * @param $nodeInfo 节点信息
+     * @param $paths 正确路径
+     * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
+     * @return array
+     */
+    protected function entry ($post, $nodeInfo, $paths, $carPaths)
+    {
+        // 临时车是否允许入场
+        if ($carPaths['car_type'] == CarType::TEMP_CAR) {
+            // 临时车车位数限制
+            $allowPass = true;
+            $passIdentity = CarType::TEMP_CAR;
+            $errorMessage = [];
+            if ($nodeInfo['temp_car_count'] > 0 && $nodeInfo['temp_car_left'] <= 0) {
+                $errorMessage[] = CarType::getMessage(CarType::TEMP_CAR) . '车位已满';
+                $allowPass = false;
+            }
+        }
+
+        // 会员车是否允许入场
+        if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
+            // 去掉无效路径
+            $paths = array_column($paths, null, 'id');
+            foreach ($carPaths['car_path'] as $k => $v) {
+                if (!isset($paths[$v['path_id']])) {
+                    unset($carPaths['car_path'][$k]);
+                }
+            }
+            // 会员车状态
+            $memberCars = $this->carModel->validationMemberCarType(array_column($carPaths['car_path'], 'car_id'));
+            $memberCars = array_column($memberCars, null, 'id');
+            // 多条路径，若有一条路径成立，就通行
+            $allowPass = false;
+            $passIdentity = null;
+            $errorMessage = [];
+            foreach ($carPaths['car_path'] as $k => $v) {
+                $memberCarInfo = $memberCars[$v['car_id']];
+                if (!isset($memberCarInfo)) {
+                    continue;
+                }
+                // 失效会员车
+                if (!$memberCarInfo['available']) {
+                    $errorMessage[] = '此' . CarType::getMessage($memberCarInfo['car_type']) . '已失效';
+                    // 失效会员车是否允许入场
+                    if ($paths[$v['path_id']]['allow_invalid_car']) {
+                        $allowPass = true;
+                        $passIdentity = CarType::INVALID_CAR; // 入场为过期车 注：会员车失效后是过期车，不会变成临时车
+                    }
+                } else {
+                    // 子母车位数限制
+                    if (count($v['car_number']) > 1) {
+                        // 剩余车位数
+                        if ($v['place_left'] > 0) {
+                            $allowPass = true;
+                            $passIdentity = CarType::CHILD_CAR; // 入场为附属车
+                            break;
+                        } else {
+                            $errorMessage[] = '此' . CarType::getMessage(CarType::CHILD_CAR) . '车位已满';
+                            // 子母车位满后是否允许入场
+                            if ($paths[$v['path_id']]['allow_child_car']) {
+                                $allowPass = true;
+                                $passIdentity = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
+                            }
+                        }
+                    } else {
+                        $allowPass = true;
+                        $passIdentity = $memberCarInfo['car_type']; // 入场为会员车
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 返回不能入场消息
+        if (!$allowPass) {
+            return error(implode(',', $errorMessage));
+        }
+
+        // 添加入场信息
+        if (!$this->entryModel->addEntryInfo([
+            'car_type' => $carPaths['car_type'],
+            'entry_car_type' => $passIdentity,
+            'original_car_number' => $post['original_car_number'],
+            'car_number' => $post['car_number'],
+            'paths' => json_encode(array_column($paths, 'id')),
+            'current_node_id' => $post['node_id'],
+            'last_nodes' => json_encode([['node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)]]),
+            'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
+            'pass_type' => PassType::NORMAL_PASS,
+            'onduty_id' => $post['onduty_id'],
+            'broadcast' => '欢迎光临'
+        ])) {
+            return error('入场错误，请重试');
+        }
+
+        // todo 起竿&语音播报
+        return error('欢迎光临');
+    }
+
+    /**
+     * 计算计费金额
+     * @param $parameter
+     * @param $code
+     * @return int (分)
+     */
+    protected function calculationCode ($parameter, $code)
+    {
+        extract($parameter);
+        $result = @eval($code);
+        if (null === $result || false === $result) {
+            return false;
+        }
+        $result = intval($result);
+        return $result < 0 ? 0 : $result;
+    }
+
+    /**
+     * 输出参数
+     * @param $broadcast 语音播报文字
+     * @param $status
+     * @return array
+     */
+    protected function panel ($broadcast, $status = 1)
+    {
+        return success([
+            'broadcast' => $broadcast,
+            'status' => $status
+        ]);
+    }
+
+    /**
+     * 车牌纠错待处理
      * @param $post
      * @param $currentErrorScene
      * @return array
@@ -181,6 +483,7 @@ class ParkModel extends Crud {
 
     /**
      * 处理异常车
+     * @param onduty_id
      * @param node_id
      * @param original_car_number
      * @param car_number
@@ -372,9 +675,9 @@ class ParkModel extends Crud {
             '0' => ['D', '6'],
             '1' => ['J', 'L', '4', 'A', 'T'],
             '2' => ['Z', '3'],
-            '3' => ['2', '8'],
+            '3' => ['2', '8', '5'],
             '4' => ['C', '1'],
-            '5' => ['B', 'S'],
+            '5' => ['B', 'S', '3'],
             '6' => ['B', 'C', '8', '0'],
             '7' => ['T'],
             '8' => ['B', '3', '6', 'J'],
@@ -462,8 +765,8 @@ class ParkModel extends Crud {
      */
     protected function verifyPath ($node_id, $paths, $lastNodes)
     {
+        $lastNodes = $this->entryModel->connectNode($lastNodes, $node_id);
         $lastNodes = array_column($lastNodes, 'node_id');
-        $lastNodes[] = $node_id;
         $path = [];
         foreach ($paths as $k => $v) {
             if ($v['nodes'] === $lastNodes) {
@@ -488,7 +791,7 @@ class ParkModel extends Crud {
         if (empty($result)) {
             // 默认为临时车
             $result = [
-                'car_type' => CarType::TEMP_CAR, 'paths' => $this->pathModel->getTempCarPath()
+                'car_type' => CarType::TEMP_CAR, 'car_path' => [], 'paths' => $this->pathModel->getTempCarPath()
             ];
         }
 

@@ -1,5 +1,7 @@
 <?php
-
+/**
+ * 异常车通行方式
+ */
 namespace app\common;
 
 class AbnormalCarPassWay
@@ -14,7 +16,8 @@ class AbnormalCarPassWay
         3 => '手动放行'
     ];
 
-    public static function getMessage ($code) {
+    public static function getMessage ($code)
+    {
         return isset(self::$message[$code]) ? self::$message[$code] : '';
     }
 
