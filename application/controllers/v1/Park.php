@@ -11,6 +11,16 @@ use app\models\ParkModel;
  */
 class Park extends ActionPDO {
 
+    public function __ratelimit ()
+    {
+        return [
+            'pass' => [
+                'url' => getgpc('node_id'),
+                'interval' => 1000
+            ]
+        ];
+    }
+
     /**
      * 车辆进出场
      * @param *car_number 车牌号

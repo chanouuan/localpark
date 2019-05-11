@@ -18,13 +18,12 @@ class EntryModel extends Crud {
     {
         $info = $this->find([
             'car_number' => $car_number
-        ], 'id,car_type,entry_car_type,paths,current_node_id,last_nodes,correction_record,broadcast,update_time,version_count');
+        ], 'id,car_type,entry_car_type,paths,current_node_id,last_nodes,broadcast,update_time,version_count,pass_type');
         if ($info) {
             // 当前路径
             $info['paths'] = $info['paths'] ? json_decode($info['paths'], true) : [];
             // 节点记录 [{"node_id":node_id,"time":time}]
             $info['last_nodes'] = $info['last_nodes'] ? json_decode($info['last_nodes'], true) : [];
-            $info['correction_record'] = $info['correction_record'] ? json_decode($info['correction_record'], true) : [];
         }
         return $info;
     }
@@ -34,11 +33,11 @@ class EntryModel extends Crud {
      * @param $data
      * @return bool
      */
-    public function addEntryInfo ($data)
+    public function addEntryInfo (array $data)
     {
         $data['update_time'] = date('Y-m-d H:i:s', TIMESTAMP);
         $data['create_time'] = date('Y-m-d H:i:s', TIMESTAMP);
-        if (!$this->getDb()->insert($this->table, $data)) {
+        if (!$id = $this->getDb()->insert($this->table, $data, null, false, true)) {
             return false;
         }
         // 更新车辆入场状态
@@ -60,22 +59,22 @@ class EntryModel extends Crud {
                 ], 'place_left > 0 and JSON_CONTAINS(car_number,\'"' . $data['car_number'] . '"\')');
             }
         }
-        return true;
+        return $id;
 
     }
 
     /**
      * 保存入场信息
-     * @param $entry
+     * @param $entryInfo
      * @param $data
      * @return bool
      */
-    public function saveEntryInfo ($entry, $data)
+    public function saveEntryInfo (array $entryInfo, array $data)
     {
         $data['version_count'] = ['version_count+1'];
         $data['update_time'] = date('Y-m-d H:i:s', TIMESTAMP);
         if (!$this->getDb()->update($this->table, $data, [
-            'id' => $entry['id'], 'version_count' => $entry['version_count']
+            'id' => $entryInfo['id'], 'version_count' => $entryInfo['version_count']
         ])) {
             return false;
         }
@@ -85,30 +84,71 @@ class EntryModel extends Crud {
             $this->getDb()->update('chemi_car', [
                 'is_entry' => 0, 'out_time' => $data['update_time']
             ], [
-                'car_number' => $entry['car_number']
+                'car_number' => $entryInfo['car_number']
             ]);
         }
         // 不是重复提交
-        if ($entry['current_node_id'] != $data['current_node_id']) {
+        if ($entryInfo['current_node_id'] != $data['current_node_id']) {
             // 更新车位数
-            if ($entry['car_type'] == CarType::TEMP_CAR) {
+            if ($entryInfo['car_type'] == CarType::TEMP_CAR) {
                 // 临时车车位数+1
                 $this->getDb()->update('chemi_node', [
                     'temp_car_left' => ['temp_car_left+1']
                 ], [
-                    'id' => $entry['current_node_id'], 'temp_car_count' => ['>temp_car_left']
+                    'id' => $entryInfo['current_node_id'], 'temp_car_count' => ['>temp_car_left']
                 ]);
+                // 不是终点
+                if (!$data['out_car_type']) {
+                    // 当前节点临时车车位数-1
+                    $this->getDb()->update('chemi_node', [
+                        'temp_car_left' => ['temp_car_left-1']
+                    ], [
+                        'id' => $data['current_node_id'], 'temp_car_count' => ['>', 0], 'temp_car_left' => ['>', 0]
+                    ]);
+                }
             }
-            if ($entry['car_type'] == CarType::MEMBER_CAR) {
+            if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
                 // 会员车车位数+1
                 if ($data['out_car_type']) {
-                    if ($entry['entry_car_type'] == CarType::CHILD_CAR) {
+                    if ($entryInfo['entry_car_type'] == CarType::CHILD_CAR) {
                         $this->getDb()->update('chemi_car_path', [
                             'place_left' => ['place_left+1']
-                        ], 'place_count > place_left and JSON_CONTAINS(car_number,\'"' . $entry['car_number'] . '"\')');
+                        ], 'place_count > place_left and JSON_CONTAINS(car_number,\'"' . $entryInfo['car_number'] . '"\')');
                     }
                 }
             }
+        }
+        return true;
+    }
+
+    /**
+     * 删除入场车
+     * @return bool
+     */
+    public function removeEntryCar (array $entryInfo)
+    {
+        if ($entryInfo['out_car_type']) {
+            // 已经出场的车不能删除
+            return false;
+        }
+        // 删除入场车
+        if (!$this->getDb()->delete($this->table, ['id' => $entryInfo['id']])) {
+            return false;
+        }
+        // 更新车入场状态
+        $this->getDb()->update('chemi_car', [
+            'is_entry' => 0
+        ], [
+            'car_number' => $entryInfo['car_number']
+        ]);
+        // 更新车位数
+        if ($entryInfo['car_type'] == CarType::TEMP_CAR) {
+            // 临时车车位数+1
+            $this->getDb()->update('chemi_node', [
+                'temp_car_left' => ['temp_car_left+1']
+            ], [
+                'id' => $entryInfo['current_node_id'], 'temp_car_count' => ['>temp_car_left']
+            ]);
         }
         return true;
     }
@@ -239,15 +279,6 @@ class EntryModel extends Crud {
             $list = array_column($list, 'car_number');
         }
         return $list;
-    }
-
-    /**
-     * 删除入场车
-     * @return bool
-     */
-    public function removeEntryCar ($condition)
-    {
-        return $this->getDb()->delete($this->table, $condition);
     }
 
 }

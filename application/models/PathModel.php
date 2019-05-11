@@ -25,7 +25,7 @@ class PathModel extends Crud {
     /**
      * 获取路径节点
      */
-    public function getPathNodeById ($paths)
+    public function getPathNodeById (array $paths)
     {
         $list = $this->select(['id' => ['in', $paths]], 'id,start_node,end_node,nodes,allow_temp_car,allow_invalid_car,allow_child_car,calculation_code');
         if ($list) {

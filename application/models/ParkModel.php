@@ -6,6 +6,7 @@ use Crud;
 use app\common\CarType;
 use app\common\AbnormalCarPassWay;
 use app\common\PassType;
+use app\common\SignalType;
 
 class ParkModel extends Crud {
 
@@ -13,6 +14,7 @@ class ParkModel extends Crud {
     protected $carModel;
     protected $pathModel;
     protected $entryModel;
+    protected $outModel;
 
     public function __construct()
     {
@@ -21,6 +23,7 @@ class ParkModel extends Crud {
         $this->carModel   = new CarModel();
         $this->pathModel  = new PathModel();
         $this->entryModel = new EntryModel();
+        $this->outModel   = new OutModel();
     }
 
     /**
@@ -30,7 +33,7 @@ class ParkModel extends Crud {
      * @param car_number 车牌号
      * @return array
      */
-    public function pass ($post)
+    public function pass (array $post)
     {
         // 节点
         $post['node_id'] = intval($post['node_id']);
@@ -80,8 +83,8 @@ class ParkModel extends Crud {
                 $correctionResult = $this->correctionLogic($post, ['NO_ENTRY', 'NO_START_NODE']);
                 $post = array_merge($post, $correctionResult['result']);
                 if ($correctionResult['errorcode'] !== 0) {
-                    // 进入异常车流程
-                    return $this->abnormalCarNumber($post);
+                    // 异常车
+                    return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
                 }
                 return $this->pass($post);
             } else {
@@ -93,6 +96,14 @@ class ParkModel extends Crud {
                 // 4.有可能以错车牌入场
                 // todo 入场
                 return $this->entry($post, $nodeInfo, $startPaths, $carPaths);
+            }
+        }
+
+        // 异常车通行
+        if ($entryCarInfo['pass_type'] == PassType::ABNORMAL_PASS) {
+            // 只要不是起点，都按异常车通行，因为起点会自动将入场异常车移到出入场记录表
+            if (empty($startPaths) || ($endPaths && $startPaths)) {
+                return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
             }
         }
 
@@ -112,8 +123,8 @@ class ParkModel extends Crud {
                 $correctionResult = $this->correctionLogic($post, ['ENTRY', 'END_NODE', 'PATH_ERROR']);
                 $post = array_merge($post, $correctionResult['result']);
                 if ($correctionResult['errorcode'] !== 0) {
-                    // 进入异常车流程
-                    return $this->abnormalCarNumber($post);
+                    // 异常车
+                    return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
                 }
                 return $this->pass($post);
             }
@@ -122,9 +133,13 @@ class ParkModel extends Crud {
             if ($outResult['errorcode'] !== 0) {
                 return $outResult;
             }
-            if (empty($startPaths)) {
+            if (empty($startPaths) || $outResult['result']['status'] != SignalType::PASS_SUCCESS) {
                 // todo 起竿&语音播报
                 return $outResult;
+            }
+            // 出场记录
+            if (!$this->outModel->addOutInfo($entryCarInfo['id'])) {
+                return error('记录出场错误，请重试');
             }
             // 既是终点又是起点
             return $this->pass([
@@ -134,19 +149,14 @@ class ParkModel extends Crud {
 
         // 判断是否起点
         if ($startPaths) {
-            // 防止重复起竿 (起竿后车辆不通过)
-            if ($entryCarInfo['current_node_id'] == $post['node_id']) {
-                // todo 起竿&语音播报
-                return success($entryCarInfo['broadcast']);
-            }
             // 1.车牌识别错
             // 2.上次出场异常 (系统错误、跟车...)
             // todo 车牌纠错
             $correctionResult = $this->correctionLogic($post, ['ENTRY', 'START_NODE']);
             $post = array_merge($post, $correctionResult['result']);
             if ($correctionResult['errorcode'] !== 0) {
-                // 进入异常车流程
-                return $this->abnormalCarNumber($post);
+                // 异常车
+                return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
             }
             return $this->pass($post);
         }
@@ -159,8 +169,8 @@ class ParkModel extends Crud {
             $correctionResult = $this->correctionLogic($post, ['ENTRY', 'MIDDLE_NODE', 'PATH_ERROR']);
             $post = array_merge($post, $correctionResult['result']);
             if ($correctionResult['errorcode'] !== 0) {
-                // 进入异常车流程
-                return $this->abnormalCarNumber($post);
+                // 异常车
+                return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
             }
             return $this->pass($post);
         }
@@ -178,7 +188,7 @@ class ParkModel extends Crud {
      * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
      * @return array
      */
-    protected function mid ($post, $nodeInfo, $entryCarInfo, $paths, $carPaths)
+    protected function mid (array $post, array $nodeInfo, array $entryCarInfo, array $paths, array $carPaths)
     {
         $allowPass = true;
 
@@ -220,7 +230,7 @@ class ParkModel extends Crud {
      * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
      * @return array
      */
-    protected function out ($post, $entryCarInfo, $paths, $carPaths)
+    protected function out (array $post, array $entryCarInfo, array $paths, array $carPaths)
     {
         $entryCarInfo['last_nodes'][] = [
             'node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)
@@ -336,7 +346,7 @@ class ParkModel extends Crud {
      * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
      * @return array
      */
-    protected function entry ($post, $nodeInfo, $paths, $carPaths)
+    protected function entry (array $post, array $nodeInfo, array $paths, array $carPaths)
     {
         // 临时车是否允许入场
         if ($carPaths['car_type'] == CarType::TEMP_CAR) {
@@ -418,7 +428,7 @@ class ParkModel extends Crud {
             'paths' => json_encode(array_column($paths, 'id')),
             'current_node_id' => $post['node_id'],
             'last_nodes' => json_encode([['node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)]]),
-            'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
+            'correction_record' => json_encode([$post['correction_record_id']]),
             'pass_type' => PassType::NORMAL_PASS,
             'onduty_id' => $post['onduty_id'],
             'broadcast' => '欢迎光临'
@@ -436,7 +446,7 @@ class ParkModel extends Crud {
      * @param $code
      * @return int (分)
      */
-    protected function calculationCode ($parameter, $code)
+    protected function calculationCode (array $parameter, $code)
     {
         extract($parameter);
         $result = @eval($code);
@@ -448,62 +458,123 @@ class ParkModel extends Crud {
     }
 
     /**
-     * 输出参数
+     * 发送信号
+     * @param $id 流水号
+     * @param $message 提示消息
      * @param $broadcast 语音播报文字
-     * @param $status
+     * @param $status 信号状态
+     * @param array $data 显示数据
      * @return array
      */
-    protected function panel ($broadcast, $status = 1)
+    protected function sendSignal ($id, $message, $broadcast, $status, array $data = [])
     {
         return success([
+            'id' => $id,
+            'message' => $message,
             'broadcast' => $broadcast,
-            'status' => $status
+            'status' => $status,
+            'data' => $data
         ]);
     }
 
     /**
      * 车牌纠错待处理
      * @param $post
-     * @param $currentErrorScene
+     * @param $errorScene
      * @return array
      */
-    protected function correctionLogic ($post, $currentErrorScene)
+    protected function correctionLogic (array $post, array $errorScene)
     {
-        // 判断是否为第二次错误
-        if (!empty($post['error_count'])) {
-            if (empty($post['correction_scene_count'])) {
-                // 第二次识别错，原车牌号进行场景修正
-                return $this->correctionSceneError($post['node_id'], $post['original_car_number'], $post['car_number'], $post['error_scene'], $post['error_count'], $post['correction_record_id']);
-            }
+        // 判断第二次错误
+        if ($post['error_count']) {
+            // 只进行2次纠错
             return error($post);
         }
+        // 场景修正
+        if (empty($post['correction_scene_count'])) {
+            $result = $this->correctionSceneError($post['node_id'], $post['original_car_number'], $post['car_number'], $errorScene, $post['error_count'], $post['correction_record_id']);
+            if ($result['errorcode'] === 0) {
+                // 场景修正成功
+                return success(array_merge($post, $result['result']));
+            }
+        }
         // 校正车牌
-        return $this->correctionCarNumber($post['node_id'], $post['original_car_number'], $post['car_number'], $currentErrorScene);
+        return $this->correctionCarNumber($post['node_id'], $post['original_car_number'], $post['car_number'], $errorScene);
     }
 
     /**
      * 处理异常车
-     * @param onduty_id
-     * @param node_id
-     * @param original_car_number
-     * @param car_number
-     * @param error_count
-     * @param correction_record_id
+     * @param $post
+     * @param $nodeInfo 节点信息
+     * @param $entryCarInfo 入场信息
      * @return array
      */
-    protected function abnormalCarNumber ($post)
+    protected function abnormalCarNumber (array $post, array $nodeInfo, $entryCarInfo)
     {
+        // 1 纠错失败
+        // 2 路径错误
         // 异常车通行方式
-        $nodeInfo = $this->nodeModel->getAbnormalCarPassWay($post['node_id']);
         if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::AUTO_PASS) {
             // 自动放行
-        }
-        if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::CHARGE) {
+            $settlementMoney = 0;
+            $signalType = SignalType::PASS_SUCCESS;
+        } else if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::CHARGE) {
             // 异常收费
-        }
-        if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::MANUAL_PASS) {
+            $settlementMoney = $nodeInfo['abnormal_car_charge'];
+            if ($settlementMoney <= 0) {
+                $signalType = SignalType::PASS_SUCCESS;
+            } else {
+                $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
+            }
+        } else if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::MANUAL_PASS) {
             // 手动放行
+            $settlementMoney = 0;
+            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
+        } else {
+            return error('异常车禁止通行');
         }
+
+        // 有入场信息就追加，否则新增入场信息
+        // 通行方式为异常放行
+        if ($entryCarInfo) {
+            $id = $entryCarInfo['id'];
+            if ($signalType == SignalType::PASS_SUCCESS) {
+                // 起竿放行信号，才追加入场信息，是为了防止车辆驶错通道，造成路径错误问题
+                if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
+                    'out_car_type' => CarType::ABNORMAL_CAR,
+                    'money' => ['money+' . $settlementMoney],
+                    'current_node_id' => $post['node_id'],
+                    'last_nodes' => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'])),
+                    'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
+                    'pass_type' => PassType::ABNORMAL_PASS,
+                    'onduty_id' => $post['onduty_id'],
+                    'signal_type' => $signalType,
+                    'broadcast' => '欢迎光临'
+                ])) {
+                    return error('出场错误，请重试');
+                }
+            }
+        } else {
+            if (!$id = $this->entryModel->addEntryInfo([
+                'car_type' => CarType::ABNORMAL_CAR,
+                'entry_car_type' => CarType::ABNORMAL_CAR,
+                'original_car_number' => $post['original_car_number'],
+                'car_number' => $post['car_number'],
+                'money' => $settlementMoney,
+                'current_node_id' => $post['node_id'],
+                'last_nodes' => json_encode([['node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)]]),
+                'correction_record' => json_encode([$post['correction_record_id']]),
+                'pass_type' => PassType::ABNORMAL_PASS,
+                'onduty_id' => $post['onduty_id'],
+                'signal_type' => $signalType,
+                'broadcast' => '欢迎光临'
+            ])) {
+                return error('入场错误，请重试');
+            }
+        }
+
+        // 返回信号
+        return $this->sendSignal($id, '欢迎光临', '欢迎光临', $signalType, []);
     }
 
     /**
@@ -536,6 +607,7 @@ class ParkModel extends Crud {
             }
             // 查找相似车牌
             $newCarNumber = $this->similarCarNumber($original_car_number, $entryCar);
+            unset($entryCar);
             $correctionMessage[$errorCount][] = $newCarNumber['message'];
             if ($newCarNumber['errorcode'] !== 0) {
                 return $this->correctionCarNumber($node_id, $original_car_number, $car_number, $errorScene, $correctionMessage, $errorCount + 1);
@@ -565,6 +637,7 @@ class ParkModel extends Crud {
             }
             // 查找相似车牌
             $newCarNumber = $this->similarCarNumber($original_car_number, $entryCar);
+            unset($entryCar);
             $correctionMessage[$errorCount][] = $newCarNumber['message'];
             if ($newCarNumber['errorcode'] !== 0) {
                 $correctionRecordId = $this->saveCorrectionRecord($node_id, $original_car_number, $car_number, $errorScene, $errorCount, $correctionMessage);
@@ -597,31 +670,46 @@ class ParkModel extends Crud {
      */
     protected function correctionSceneError ($node_id, $original_car_number, $car_number, array $errorScene, $errorCount, $correctionRecordId)
     {
+        $original_car_number = $original_car_number ? $original_car_number : $car_number;
+
         if (array_intersect($errorScene, ['ENTRY', 'START_NODE'])) {
             // 进场，有入场信息
-            // 删除入场信息
+            // 1.重复起竿 (起竿后车辆不通过)
+            // 2.上次入场记录未移到进出场记录表
             $entryCarInfo = $this->entryModel->find([
                 'car_number' => $original_car_number
             ]);
             if ($entryCarInfo) {
-                if ($this->entryModel->removeEntryCar([
-                    'car_number' => $original_car_number
-                ])) {
-                    if ($this->getDb()->update('chemi_correction_record', [
-                        'scene_result' => json_mysql_encode($entryCarInfo), 'update_time' => date('Y-m-d H:i:s', TIMESTAMP)
-                    ], ['id' => $correctionRecordId])) {
-                        return success([
-                            'original_car_number' => $original_car_number,
-                            'car_number' => $original_car_number, // 换成原车牌
-                            'error_count' => $errorCount,
-                            'error_scene' => $errorScene,
-                            'correction_record_id' => $correctionRecordId,
-                            'correction_scene_count' => 1
-                        ]);
+                if ($entryCarInfo['current_node_id'] == $node_id) {
+                    // 重复进场
+                    $record = $this->entryModel->removeEntryCar($entryCarInfo);
+                } else {
+                    if ($entryCarInfo['out_car_type']) {
+                        // 已出场
+                        $record = $this->outModel->addOutInfo($entryCarInfo['id']);
+                    } else {
+                        // 未出场
+                        $record = $this->entryModel->removeEntryCar($entryCarInfo);
                     }
+                }
+                if ($record) {
+                    if ($correctionRecordId) {
+                        $this->getDb()->update('chemi_correction_record', [
+                            'scene_result' => json_mysql_encode($entryCarInfo), 'update_time' => date('Y-m-d H:i:s', TIMESTAMP)
+                        ], ['id' => $correctionRecordId]);
+                    }
+                    return success([
+                        'original_car_number' => $original_car_number,
+                        'car_number' => $original_car_number, // 换成原车牌
+                        'error_count' => $errorCount,
+                        'error_scene' => $errorScene,
+                        'correction_record_id' => $correctionRecordId,
+                        'correction_scene_count' => 1
+                    ]);
                 }
             }
         }
+
         return error([
             'original_car_number' => $original_car_number,
             'car_number' => $car_number,
@@ -707,7 +795,7 @@ class ParkModel extends Crud {
             $secondNumber = substr($v, 3);
             if (strlen($secondNumber) == $firstNumberLength) {
                 $similarPercent = levenshtein($firstNumber, $secondNumber);
-                if ($similarPercent >= $minMatchPercent) {
+                if ($similarPercent <= $minMatchPercent) {
                     $similarResult[$v] = $similarPercent;
                 }
             }
@@ -749,9 +837,9 @@ class ParkModel extends Crud {
             $similarResult[$k][] = implode(' + ', $weightValue);
         }
         array_multisort(array_column($similarResult, 3), SORT_DESC, SORT_NUMERIC, $similarResult);
-        // 权重大于0.85
-        if ($similarResult[0][2] < 0.85) {
-            return error($similarResult, '共查询' . $secondLength . '个车牌，最大权重' . $similarResult[0][2] . '不达标');
+        // 权重大于0.855
+        if ($similarResult[0][3] < 0.855) {
+            return error($similarResult, '共查询' . $secondLength . '个车牌，找到相似车牌“' . $similarResult[0][0] . '”，相似度' . $similarResult[0][2] . '，最大权重' . $similarResult[0][3] . '不达标');
         }
         return success($similarResult, '共查询' . $secondLength . '个车牌，找到相似车牌“' . $similarResult[0][0] . '”，相似度' . $similarResult[0][2] . '，权重值' . $similarResult[0][3]);
     }
@@ -763,7 +851,7 @@ class ParkModel extends Crud {
      * @param $lastNodes 路径节点记录 [{"node_id":node_id,"time":time}]
      * @return array 返回正确路径
      */
-    protected function verifyPath ($node_id, $paths, $lastNodes)
+    protected function verifyPath ($node_id, array $paths, array $lastNodes)
     {
         $lastNodes = $this->entryModel->connectNode($lastNodes, $node_id);
         $lastNodes = array_column($lastNodes, 'node_id');
@@ -805,7 +893,7 @@ class ParkModel extends Crud {
      * @param $node 指定节点类型
      * @return array
      */
-    protected function diffPath ($paths, $node_id, $node = null)
+    protected function diffPath (array $paths, $node_id, $node = null)
     {
         $path = [];
         foreach ($paths as $k => $v) {

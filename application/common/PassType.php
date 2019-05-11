@@ -12,7 +12,7 @@ class PassType
     const MANUAL_PASS   = 3;
 
     static $message = [
-        0 => '等待通行',
+        0 => '等待放行',
         1 => '正常通行',
         2 => '异常放行',
         3 => '手动起竿放行'

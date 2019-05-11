@@ -15,7 +15,7 @@ class OutModel extends Crud {
      */
     public function addOutInfo ($entry_id)
     {
-        if (empty($entryInfo = (new EntryModel())->get($entry_id))) {
+        if (empty($entryInfo = (new EntryModel())->find(['id' => $entry_id]))) {
             return false;
         }
         if (!$this->getDb()->transaction(function ($db) use ($entryInfo){
