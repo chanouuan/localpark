@@ -2,6 +2,7 @@
 /**
  * 信号发送类型
  */
+
 namespace app\common;
 
 class SignalType

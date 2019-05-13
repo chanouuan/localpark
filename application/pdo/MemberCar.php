@@ -11,9 +11,7 @@ use app\models\CarModel;
 
 class MemberCar implements SuperCar
 {
-    /**
-     * 入场
-     */
+
     public function entry (array $node, array $paths, array $carPaths)
     {
         // 去掉无效路径
@@ -23,9 +21,11 @@ class MemberCar implements SuperCar
                 unset($carPaths[$k]);
             }
         }
+
         // 会员车状态
         $memberCars = (new CarModel())->validationMemberCarType(array_column($carPaths, 'car_id'));
         $memberCars = array_column($memberCars, null, 'id');
+
         // 多条路径，若有一条路径成立，就通行
         $signalType = null;
         $carType = null;
@@ -36,6 +36,8 @@ class MemberCar implements SuperCar
             if (!isset($memberCarInfo)) {
                 continue;
             }
+            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
+            $carType = $memberCarInfo['car_type'];
             // 会员车是否失效
             if (!$memberCarInfo['available']) {
                 $message[] = '此' . CarType::getMessage($memberCarInfo['car_type']) . '已失效';
@@ -50,15 +52,18 @@ class MemberCar implements SuperCar
                 if (count($v['car_number']) > 1) {
                     // 剩余车位数
                     if ($v['place_left'] > 0) {
-                        $allowPass = true;
-                        $passIdentity = CarType::CHILD_CAR; // 入场为附属车
+                        $signalType = SignalType::PASS_SUCCESS;
+                        $carType = CarType::CHILD_CAR; // 入场为附属车
+                        $message[] = '欢迎光临';
+                        $broadcast[] = '欢迎光临';
                         break;
                     } else {
-                        $errorMessage[] = '此' . CarType::getMessage(CarType::CHILD_CAR) . '车位已满';
+                        $message[] = '此' . CarType::getMessage(CarType::CHILD_CAR) . '车位已满';
+                        $broadcast[] = '此' . CarType::getMessage(CarType::CHILD_CAR) . '车位已满';
                         // 子母车位满后是否允许入场
                         if ($paths[$v['path_id']]['allow_child_car']) {
-                            $allowPass = true;
-                            $passIdentity = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
+                            $signalType = SignalType::PASS_SUCCESS;
+                            $carType = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
                         }
                     }
                 } else {
@@ -70,8 +75,24 @@ class MemberCar implements SuperCar
                 }
             }
         }
+
+        if (empty($carType)) {
+            return error('此会员车不能入场');
+        }
+
+        // 通行方式
+        if ($signalType == SignalType::PASS_SUCCESS) {
+            $passType = PassType::NORMAL_PASS;
+        } else {
+            $passType = PassType::WAIT_PASS;
+        }
+
         return success([
-            'carType' => $carType, 'message' => $message, 'broadcast' => $broadcast, 'signalType' => $signalType
+            'carType' => $carType,
+            'message' => implode('', $message),
+            'broadcast' => implode('', $broadcast),
+            'signalType' => $signalType,
+            'passType' => $passType
         ]);
     }
 

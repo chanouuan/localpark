@@ -2,6 +2,7 @@
 /**
  * 异常车通行方式
  */
+
 namespace app\common;
 
 class AbnormalCarPassWay

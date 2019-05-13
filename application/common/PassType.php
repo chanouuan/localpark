@@ -2,6 +2,7 @@
 /**
  * 通行方式
  */
+
 namespace app\common;
 
 class PassType

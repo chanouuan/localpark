@@ -2,6 +2,7 @@
 /**
  * 车辆类型
  */
+
 namespace app\common;
 
 class CarType

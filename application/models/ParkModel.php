@@ -348,96 +348,43 @@ class ParkModel extends Crud {
      */
     protected function entry (array $post, array $nodeInfo, array $paths, array $carPaths)
     {
-        // 临时车是否允许入场
+        // 判断车类型
         if ($carPaths['car_type'] == CarType::TEMP_CAR) {
-            // 临时车车位数限制
-            $allowPass = true;
-            $passIdentity = CarType::TEMP_CAR;
-            $errorMessage = [];
-            if ($nodeInfo['temp_car_count'] > 0 && $nodeInfo['temp_car_left'] <= 0) {
-                $errorMessage[] = CarType::getMessage(CarType::TEMP_CAR) . '车位已满';
-                $allowPass = false;
-            }
+            $className = \app\pdo\TempCar::class;
+        } else if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
+            $className = \app\pdo\MemberCar::class;
+        } else {
+            return error(CarType::getMessage($carPaths['car_type']) . '不能入场');
         }
 
-        // 会员车是否允许入场
-        if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
-            // 去掉无效路径
-            $paths = array_column($paths, null, 'id');
-            foreach ($carPaths['car_path'] as $k => $v) {
-                if (!isset($paths[$v['path_id']])) {
-                    unset($carPaths['car_path'][$k]);
-                }
-            }
-            // 会员车状态
-            $memberCars = $this->carModel->validationMemberCarType(array_column($carPaths['car_path'], 'car_id'));
-            $memberCars = array_column($memberCars, null, 'id');
-            // 多条路径，若有一条路径成立，就通行
-            $allowPass = false;
-            $passIdentity = null;
-            $errorMessage = [];
-            foreach ($carPaths['car_path'] as $k => $v) {
-                $memberCarInfo = $memberCars[$v['car_id']];
-                if (!isset($memberCarInfo)) {
-                    continue;
-                }
-                // 失效会员车
-                if (!$memberCarInfo['available']) {
-                    $errorMessage[] = '此' . CarType::getMessage($memberCarInfo['car_type']) . '已失效';
-                    // 失效会员车是否允许入场
-                    if ($paths[$v['path_id']]['allow_invalid_car']) {
-                        $allowPass = true;
-                        $passIdentity = CarType::INVALID_CAR; // 入场为过期车 注：会员车失效后是过期车，不会变成临时车
-                    }
-                } else {
-                    // 子母车位数限制
-                    if (count($v['car_number']) > 1) {
-                        // 剩余车位数
-                        if ($v['place_left'] > 0) {
-                            $allowPass = true;
-                            $passIdentity = CarType::CHILD_CAR; // 入场为附属车
-                            break;
-                        } else {
-                            $errorMessage[] = '此' . CarType::getMessage(CarType::CHILD_CAR) . '车位已满';
-                            // 子母车位满后是否允许入场
-                            if ($paths[$v['path_id']]['allow_child_car']) {
-                                $allowPass = true;
-                                $passIdentity = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
-                            }
-                        }
-                    } else {
-                        $allowPass = true;
-                        $passIdentity = $memberCarInfo['car_type']; // 入场为会员车
-                        break;
-                    }
-                }
-            }
+        // 入场
+        $entryResult = (new $className)->entry($nodeInfo, $paths, $carPaths['car_path']);
+        // 入场错误
+        if ($entryResult['errorcode'] !== 0) {
+            return $entryResult;
         }
-
-        // 返回不能入场消息
-        if (!$allowPass) {
-            return error(implode(',', $errorMessage));
-        }
+        $entryResult = $entryResult['result'];
 
         // 添加入场信息
-        if (!$this->entryModel->addEntryInfo([
+        if (!$id = $this->entryModel->addEntryInfo([
             'car_type' => $carPaths['car_type'],
-            'entry_car_type' => $passIdentity,
+            'entry_car_type' => $entryResult['carType'],
             'original_car_number' => $post['original_car_number'],
             'car_number' => $post['car_number'],
             'paths' => json_encode(array_column($paths, 'id')),
             'current_node_id' => $post['node_id'],
             'last_nodes' => json_encode([['node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)]]),
             'correction_record' => json_encode([$post['correction_record_id']]),
-            'pass_type' => PassType::NORMAL_PASS,
+            'pass_type' => $entryResult['passType'],
             'onduty_id' => $post['onduty_id'],
-            'broadcast' => '欢迎光临'
+            'broadcast' => $entryResult['broadcast'],
+            'signal_type' => $entryResult['signalType']
         ])) {
             return error('入场错误，请重试');
         }
 
-        // todo 起竿&语音播报
-        return error('欢迎光临');
+        // 返回信号
+        return $this->sendSignal($id, $entryResult['message'], $entryResult['broadcast'], $entryResult['signalType'], []);
     }
 
     /**
