@@ -9,7 +9,7 @@ use app\common\CarType;
 use app\common\SignalType;
 use app\common\PassType;
 
-class TempCar implements SuperCar
+class TempCar extends SuperCar
 {
 
     public function entry (array $node, array $paths, array $carPaths)
@@ -43,10 +43,8 @@ class TempCar implements SuperCar
         ]);
     }
 
-    public function out (array $parameter, array $paths, array $carPaths)
+    public function out (array $entry, array $parameter, array $paths, array $carPaths)
     {
-        $carType = CarType::TEMP_CAR;
-
         $pathId = null;
         $money = null;
         // 查找最便宜的一条路
@@ -76,17 +74,44 @@ class TempCar implements SuperCar
             $passType = PassType::WAIT_PASS;
         }
 
+        if ($signalType == SignalType::PASS_SUCCESS) {
+            $message = '一路顺风';
+            $broadcast = '一路顺风';
+        } else {
+            $message = '请缴费' . round_dollar($money) . '元';
+            $broadcast = '请缴费' . round_dollar($money) . '元';
+        }
+
+        return success([
+            'carType' => CarType::TEMP_CAR,
+            'message' => $message,
+            'broadcast' => $broadcast,
+            'signalType' => $signalType,
+            'passType' => $passType,
+            'money' => $money,
+            'pathId' => $pathId
+        ]);
+    }
+
+    public function mid (array $node)
+    {
+        $carType = CarType::TEMP_CAR;
+
+        // 临时车车位数限制
+        if ($node['temp_car_count'] > 0 && $node['temp_car_left'] <= 0) {
+            return error(CarType::getMessage($carType) . '车位已满');
+        }
+
+        // 消息
+        $message = '欢迎光临';
+        $broadcast = '欢迎光临';
+
         return success([
             'carType' => $carType,
             'message' => $message,
             'broadcast' => $broadcast,
-            'signalType' => $signalType,
-            'passType' => $passType
+            'signalType' => SignalType::PASS_SUCCESS,
+            'passType' => PassType::NORMAL_PASS
         ]);
-    }
-
-    public function mid ()
-    {
-
     }
 }

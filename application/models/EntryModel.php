@@ -18,7 +18,7 @@ class EntryModel extends Crud {
     {
         $info = $this->find([
             'car_number' => $car_number
-        ], 'id,car_type,entry_car_type,paths,current_node_id,last_nodes,broadcast,update_time,version_count,pass_type');
+        ], 'id,car_type,entry_car_type,out_car_type,paths,current_node_id,last_nodes,broadcast,update_time,version_count,pass_type');
         if ($info) {
             // 当前路径
             $info['paths'] = $info['paths'] ? json_decode($info['paths'], true) : [];

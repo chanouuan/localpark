@@ -9,7 +9,7 @@ use app\common\CarType;
 use app\common\SignalType;
 use app\models\CarModel;
 
-class MemberCar implements SuperCar
+class MemberCar extends SuperCar
 {
 
     public function entry (array $node, array $paths, array $carPaths)
@@ -96,13 +96,98 @@ class MemberCar implements SuperCar
         ]);
     }
 
-    public function out ()
+    public function out (array $entry, array $parameter, array $paths, array $carPaths)
     {
+        // 去掉无效路径
+        $paths = array_column($paths, null, 'id');
+        foreach ($carPaths as $k => $v) {
+            if (!isset($paths[$v['path_id']])) {
+                unset($carPaths[$k]);
+            }
+        }
 
+        // 会员车状态
+        $memberCars = (new CarModel())->validationMemberCarType(array_column($carPaths, 'car_id'));
+        $memberCars = array_column($memberCars, null, 'id');
+
+        $pathId = null;
+        $money = null;
+        $car = null;
+        // 查找最便宜的一条路
+        foreach ($carPaths as $k => $v) {
+            $memberCarInfo = $memberCars[$v['car_id']];
+            if (!isset($memberCarInfo)) {
+                continue;
+            }
+            $pathInfo = $paths[$v['path_id']];
+            $parameter['车辆类型'] = CarType::getMessage($memberCarInfo['car_type']);
+            $parameter['available'] = $entry['entry_car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
+            $parameter['balance'] = $memberCarInfo['balance'];
+            if (false !== ($calculationMoney = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
+                if (empty($pathId) || $money > $calculationMoney) {
+                    $pathId = $v['path_id'];
+                    $money = $calculationMoney;
+                    $car = $memberCarInfo;
+                    if ($money === 0) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 结算金额异常
+        if (empty($pathId)) {
+            return error('结算金额异常');
+        }
+
+        // 通行方式
+        if ($money === 0) {
+            $signalType = SignalType::PASS_SUCCESS;
+            $passType = PassType::NORMAL_PASS;
+        } else {
+            $signalType = SignalType::CONFIRM_NORMAL_CANCEL;
+            $passType = PassType::WAIT_PASS;
+        }
+
+        // 消息
+        if ($signalType == SignalType::PASS_SUCCESS) {
+            $message = '一路顺风';
+            $broadcast = '一路顺风';
+        } else {
+            $message = '请缴费' . round_dollar($money) . '元';
+            $broadcast = '请缴费' . round_dollar($money) . '元';
+            if ($car['car_type'] == CarType::STORE_CARD_CAR) {
+                // 储值卡车
+                if ($money > $parameter['balance']) {
+                    $message = '此卡余额不足,请缴费' . round_dollar($money) . '元';
+                    $broadcast = '此卡余额不足,请缴费' . round_dollar($money) . '元';
+                }
+            }
+        }
+
+        return success([
+            'carType' => $car['car_type'],
+            'message' => $message,
+            'broadcast' => $broadcast,
+            'signalType' => $signalType,
+            'passType' => $passType,
+            'money' => $money,
+            'pathId' => $pathId
+        ]);
     }
 
-    public function mid ()
+    public function mid (array $node)
     {
+        // 消息
+        $message = '欢迎光临';
+        $broadcast = '欢迎光临';
 
+        return success([
+            'carType' => CarType::MEMBER_CAR,
+            'message' => $message,
+            'broadcast' => $broadcast,
+            'signalType' => SignalType::PASS_SUCCESS,
+            'passType' => PassType::NORMAL_PASS
+        ]);
     }
 }

@@ -4,7 +4,6 @@ namespace app\models;
 
 use Crud;
 use app\common\CarType;
-use app\common\AbnormalCarPassWay;
 use app\common\PassType;
 use app\common\SignalType;
 
@@ -190,36 +189,39 @@ class ParkModel extends Crud {
      */
     protected function mid (array $post, array $nodeInfo, array $entryCarInfo, array $paths, array $carPaths)
     {
-        $allowPass = true;
-
-        // 临时车通行
+        // 判断车类型
         if ($carPaths['car_type'] == CarType::TEMP_CAR) {
-            // 临时车车位数限制
-            if ($nodeInfo['temp_car_count'] > 0 && $nodeInfo['temp_car_left'] <= 0) {
-                $errorMessage = CarType::getMessage(CarType::TEMP_CAR) . '车位已满';
-                $allowPass = false;
-            }
+            $className = \app\pdo\TempCar::class;
+        } else if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
+            $className = \app\pdo\MemberCar::class;
+        } else {
+            return error(CarType::getMessage($carPaths['car_type']) . '不能中场');
         }
 
-        // 弹框确认或自动起竿
-        if (!$allowPass) {
-            return error($errorMessage);
+        // 中场
+        $result = (new $className)->mid($nodeInfo);
+        // 中场错误
+        if ($result['errorcode'] !== 0) {
+            return $result;
         }
+        $result = $result['result'];
 
-        // 保存入场信息
+        // 保存在场信息
         if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
             'paths' => json_encode(array_column($paths, 'id')),
             'current_node_id' => $post['node_id'],
             'last_nodes' => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'])),
             'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
-            'pass_type' => PassType::NORMAL_PASS,
+            'pass_type' => $result['passType'],
             'onduty_id' => $post['onduty_id'],
-            'broadcast' => '欢迎光临'
+            'broadcast' => $result['broadcast'],
+            'signal_type' => $result['signalType']
         ])) {
-            return error('中场错误，请重试');
+            return error('中场错误,请重试');
         }
 
-        return success('欢迎光临');
+        // 返回信号
+        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signalType'], []);
     }
 
     /**
@@ -232,9 +234,7 @@ class ParkModel extends Crud {
      */
     protected function out (array $post, array $entryCarInfo, array $paths, array $carPaths)
     {
-        $entryCarInfo['last_nodes'][] = [
-            'node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)
-        ];
+        $nodes = $this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id']);
         $parameter = [
             '当前时间' => TIMESTAMP,
             '上次入场时间' => strtotime($entryCarInfo['update_time']),
@@ -244,98 +244,49 @@ class ParkModel extends Crud {
             // 会员车
             $parameter['上次出场时间'] = $this->carModel->getLastOutParkTime($post['car_number']);
         }
-        foreach ($entryCarInfo['last_nodes'] as $k => $v) {
+        foreach ($nodes as $k => $v) {
             $parameter['节点' . ($k + 1) . 'ID'] = $v['node_id'];
             $parameter['节点' . ($k + 1) . '入场时间'] = strtotime($v['time']);
             if ($k > 0) {
-                $parameter['节点' . $k . '-' . ($k + 1) . '停留时间'] = strtotime($v['time']) - strtotime($entryCarInfo['last_nodes'][$k - 1]['time']);
+                $parameter['节点' . $k . '_' . ($k + 1) . '停留时间'] = strtotime($v['time']) - strtotime($nodes[$k - 1]['time']);
             }
         }
 
-        // 临时车出场
+        // 判断车类型
         if ($carPaths['car_type'] == CarType::TEMP_CAR) {
-            // 查找最便宜的一条路
-            $simplePathId = null;
-            $settlementMoney = null;
-            $passIdentity = CarType::TEMP_CAR;
-            foreach ($paths as $k => $v) {
-                if (false !== ($calculationMoney = $this->calculationCode($parameter, $v['calculation_code']))) {
-                    if (empty($simplePathId) || $settlementMoney > $calculationMoney) {
-                        $simplePathId = $v['id'];
-                        $settlementMoney = $calculationMoney;
-                        if ($settlementMoney === 0) {
-                            break;
-                        }
-                    }
-                }
-            }
+            $className = \app\pdo\TempCar::class;
+        } else if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
+            $className = \app\pdo\MemberCar::class;
+        } else {
+            return error(CarType::getMessage($carPaths['car_type']) . '不能出场');
         }
 
-        // 会员车出场
-        if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
-            // 去掉无效路径
-            $paths = array_column($paths, null, 'id');
-            foreach ($carPaths['car_path'] as $k => $v) {
-                if (!isset($paths[$v['path_id']])) {
-                    unset($carPaths['car_path'][$k]);
-                }
-            }
-            // 会员车状态
-            $memberCars = $this->carModel->validationMemberCarType(array_column($carPaths['car_path'], 'car_id'));
-            $memberCars = array_column($memberCars, null, 'id');
-            // 查找最便宜的一条路
-            $simplePathId = null;
-            $settlementMoney = null;
-            $passIdentity = null;
-            foreach ($carPaths['car_path'] as $k => $v) {
-                $memberCarInfo = $memberCars[$v['car_id']];
-                if (!isset($memberCarInfo)) {
-                    continue;
-                }
-                $pathInfo = $paths[$v['path_id']];
-                $parameter['车辆类型'] = CarType::getMessage($memberCarInfo['car_type']);
-                $parameter['available'] = $entryCarInfo['entry_car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
-                $parameter['balance'] = $memberCarInfo['balance'];
-                if (false !== ($calculationMoney = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
-                    if (empty($simplePathId) || $settlementMoney > $calculationMoney) {
-                        $simplePathId = $v['path_id'];
-                        $settlementMoney = $calculationMoney;
-                        $passIdentity = $memberCarInfo['car_type'];
-                        if ($settlementMoney === 0) {
-                            break;
-                        }
-                    }
-                }
-            }
+        // 出场
+        $result = (new $className)->out($entryCarInfo, $parameter, $paths, $carPaths['car_path']);
+        // 入场错误
+        if ($result['errorcode'] !== 0) {
+            return $result;
         }
+        $result = $result['result'];
 
-        // 结算金额异常
-        if (empty($simplePathId)) {
-            return error('结算金额异常');
-        }
-
-        // 结算金额大于零，弹框确认收费，否则自动起竿
-        $passType = PassType::NORMAL_PASS;
-        if ($settlementMoney > 0) {
-            $passType = PassType::WAIT_PASS;
-        }
-
-        // 保存入场信息
+        // 保存在场信息
         if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
-            'out_car_type' => $passIdentity,
-            'paths' => json_encode([$simplePathId]),
-            'money' => $settlementMoney,
+            'out_car_type' => $result['carType'],
+            'paths' => json_encode([$result['pathId']]),
+            'money' => $result['money'],
             'current_node_id' => $post['node_id'],
-            'last_nodes' => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'])),
+            'last_nodes' => json_encode($nodes),
             'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
-            'pass_type' => $passType,
+            'pass_type' => $result['passType'],
             'onduty_id' => $post['onduty_id'],
-            'broadcast' => '欢迎光临'
+            'broadcast' => $result['broadcast'],
+            'signal_type' => $result['signalType']
         ])) {
-            return error('出场错误，请重试');
+            return error('出场错误,请重试');
         }
 
-        return success('欢迎光临');
+        // 返回信号
+        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signalType'], []);
     }
 
     /**
@@ -358,50 +309,33 @@ class ParkModel extends Crud {
         }
 
         // 入场
-        $entryResult = (new $className)->entry($nodeInfo, $paths, $carPaths['car_path']);
+        $result = (new $className)->entry($nodeInfo, $paths, $carPaths['car_path']);
         // 入场错误
-        if ($entryResult['errorcode'] !== 0) {
-            return $entryResult;
+        if ($result['errorcode'] !== 0) {
+            return $result;
         }
-        $entryResult = $entryResult['result'];
+        $result = $result['result'];
 
         // 添加入场信息
         if (!$id = $this->entryModel->addEntryInfo([
             'car_type' => $carPaths['car_type'],
-            'entry_car_type' => $entryResult['carType'],
+            'entry_car_type' => $result['carType'],
             'original_car_number' => $post['original_car_number'],
             'car_number' => $post['car_number'],
             'paths' => json_encode(array_column($paths, 'id')),
             'current_node_id' => $post['node_id'],
             'last_nodes' => json_encode([['node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)]]),
             'correction_record' => json_encode([$post['correction_record_id']]),
-            'pass_type' => $entryResult['passType'],
+            'pass_type' => $result['passType'],
             'onduty_id' => $post['onduty_id'],
-            'broadcast' => $entryResult['broadcast'],
-            'signal_type' => $entryResult['signalType']
+            'broadcast' => $result['broadcast'],
+            'signal_type' => $result['signalType']
         ])) {
-            return error('入场错误，请重试');
+            return error('入场错误,请重试');
         }
 
         // 返回信号
-        return $this->sendSignal($id, $entryResult['message'], $entryResult['broadcast'], $entryResult['signalType'], []);
-    }
-
-    /**
-     * 计算计费金额
-     * @param $parameter
-     * @param $code
-     * @return int (分)
-     */
-    protected function calculationCode (array $parameter, $code)
-    {
-        extract($parameter);
-        $result = @eval($code);
-        if (null === $result || false === $result) {
-            return false;
-        }
-        $result = intval($result);
-        return $result < 0 ? 0 : $result;
+        return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signalType'], []);
     }
 
     /**
@@ -450,7 +384,7 @@ class ParkModel extends Crud {
     }
 
     /**
-     * 处理异常车
+     * 异常车通行
      * @param $post
      * @param $nodeInfo 节点信息
      * @param $entryCarInfo 入场信息
@@ -458,70 +392,53 @@ class ParkModel extends Crud {
      */
     protected function abnormalCarNumber (array $post, array $nodeInfo, $entryCarInfo)
     {
-        // 1 纠错失败
-        // 2 路径错误
-        // 异常车通行方式
-        if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::AUTO_PASS) {
-            // 自动放行
-            $settlementMoney = 0;
-            $signalType = SignalType::PASS_SUCCESS;
-        } else if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::CHARGE) {
-            // 异常收费
-            $settlementMoney = $nodeInfo['abnormal_car_charge'];
-            if ($settlementMoney <= 0) {
-                $signalType = SignalType::PASS_SUCCESS;
-            } else {
-                $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
-            }
-        } else if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::MANUAL_PASS) {
-            // 手动放行
-            $settlementMoney = 0;
-            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
-        } else {
-            return error('异常车禁止通行');
+        // 异常车通行
+        $result = (new \app\pdo\AbnormalCar())->entry($nodeInfo, [], []);
+        if ($result['errorcode'] !== 0) {
+            return $result;
         }
+        $result = $result['result'];
 
         // 有入场信息就追加，否则新增入场信息
-        // 通行方式为异常放行
         if ($entryCarInfo) {
             $id = $entryCarInfo['id'];
-            if ($signalType == SignalType::PASS_SUCCESS) {
+            if ($result['signalType'] == SignalType::PASS_SUCCESS) {
                 // 起竿放行信号，才追加入场信息，是为了防止车辆驶错通道，造成路径错误问题
                 if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
-                    'out_car_type' => CarType::ABNORMAL_CAR,
-                    'money' => ['money+' . $settlementMoney],
+                    'out_car_type' => $result['carType'],
+                    'money' => ['money+' . $result['money']],
                     'current_node_id' => $post['node_id'],
                     'last_nodes' => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'])),
                     'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
-                    'pass_type' => PassType::ABNORMAL_PASS,
+                    'pass_type' => $result['passType'],
                     'onduty_id' => $post['onduty_id'],
-                    'signal_type' => $signalType,
-                    'broadcast' => '欢迎光临'
+                    'broadcast' => $result['broadcast'],
+                    'signal_type' => $result['signalType']
                 ])) {
-                    return error('出场错误，请重试');
+                    return error('出场错误,请重试');
                 }
             }
         } else {
             if (!$id = $this->entryModel->addEntryInfo([
-                'car_type' => CarType::ABNORMAL_CAR,
-                'entry_car_type' => CarType::ABNORMAL_CAR,
+                'car_type' => $result['carType'],
+                'entry_car_type' => $result['carType'],
                 'original_car_number' => $post['original_car_number'],
                 'car_number' => $post['car_number'],
-                'money' => $settlementMoney,
+                'money' => $result['money'],
                 'current_node_id' => $post['node_id'],
                 'last_nodes' => json_encode([['node_id' => $post['node_id'], 'time' => date('Y-m-d H:i:s', TIMESTAMP)]]),
                 'correction_record' => json_encode([$post['correction_record_id']]),
-                'pass_type' => PassType::ABNORMAL_PASS,
+                'pass_type' => $result['passType'],
                 'onduty_id' => $post['onduty_id'],
-                'signal_type' => $signalType,
-                'broadcast' => '欢迎光临'
+                'broadcast' => $result['broadcast'],
+                'signal_type' => $result['signalType']
             ])) {
-                return error('入场错误，请重试');
+                return error('入场错误,请重试');
             }
         }
 
         // 返回信号
-        return $this->sendSignal($id, '欢迎光临', '欢迎光临', $signalType, []);
+        return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signalType'], []);
     }
 
     /**
