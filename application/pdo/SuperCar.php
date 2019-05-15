@@ -33,13 +33,23 @@ abstract class SuperCar
     }
 
     /**
-     * 入场
+     * 中场
      * @param array $node 节点信息
      * @return array
      */
     public function mid (array $node)
     {
         return error('未知中场');
+    }
+
+    /**
+     * 正常通行
+     * @param array $entry 入场信息
+     * @return array
+     */
+    public function normalPass (array $entry)
+    {
+        return error('不能正常通行');
     }
 
     /**
@@ -50,13 +60,21 @@ abstract class SuperCar
      */
     protected function calculationCode (array $parameter, $code)
     {
+        $list = $parameter;
         extract($parameter);
-        $result = @eval($code);
-        if (null === $result || false === $result) {
+        $cost = @eval($code);
+        if (null === $cost || false === $cost) {
             return false;
         }
-        $result = intval($result);
-        return $result < 0 ? 0 : $result;
+        foreach ($list as $k => $v) {
+            $code = str_replace(['${"' . $k . '"}', '${\'' . $k . '\'}', '$' . $k], '{' . $v . '}', $code);
+        }
+        unset($list, $parameter);
+        $cost = intval($cost);
+        $cost = $cost < 0 ? 0 : $cost;
+        return [
+            'cost' => $cost, 'code' => $code
+        ];
     }
 
 }

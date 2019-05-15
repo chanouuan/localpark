@@ -28,14 +28,16 @@ class MemberCar extends SuperCar
 
         // 多条路径，若有一条路径成立，就通行
         $signalType = null;
-        $carType = null;
-        $message = [];
-        $broadcast = [];
+        $carType    = null;
+        $carId      = null;
+        $message    = [];
+        $broadcast  = [];
         foreach ($carPaths as $k => $v) {
             $memberCarInfo = $memberCars[$v['car_id']];
             if (!isset($memberCarInfo)) {
                 continue;
             }
+            $carId = $v['car_id'];
             $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
             $carType = $memberCarInfo['car_type'];
             // 会员车是否失效
@@ -88,11 +90,12 @@ class MemberCar extends SuperCar
         }
 
         return success([
-            'carType' => $carType,
-            'message' => implode('', $message),
-            'broadcast' => implode('', $broadcast),
+            'carType'    => $carType,
+            'carId'      => $carId,
+            'message'    => implode('', $message),
+            'broadcast'  => implode('', $broadcast),
             'signalType' => $signalType,
-            'passType' => $passType
+            'passType'   => $passType
         ]);
     }
 
@@ -106,13 +109,16 @@ class MemberCar extends SuperCar
             }
         }
 
+        $carModel = new CarModel();
+
         // 会员车状态
-        $memberCars = (new CarModel())->validationMemberCarType(array_column($carPaths, 'car_id'));
+        $memberCars = $carModel->validationMemberCarType(array_column($carPaths, 'car_id'));
         $memberCars = array_column($memberCars, null, 'id');
 
         $pathId = null;
-        $money = null;
-        $car = null;
+        $money  = null;
+        $code   = null;
+        $car    = null;
         // 查找最便宜的一条路
         foreach ($carPaths as $k => $v) {
             $memberCarInfo = $memberCars[$v['car_id']];
@@ -122,12 +128,13 @@ class MemberCar extends SuperCar
             $pathInfo = $paths[$v['path_id']];
             $parameter['车辆类型'] = CarType::getMessage($memberCarInfo['car_type']);
             $parameter['available'] = $entry['entry_car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
-            $parameter['balance'] = $memberCarInfo['balance'];
-            if (false !== ($calculationMoney = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
-                if (empty($pathId) || $money > $calculationMoney) {
+            $parameter['余额'] = $memberCarInfo['balance'];
+            if (false !== ($load = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
+                if (empty($pathId) || $money > $load['cost']) {
                     $pathId = $v['path_id'];
-                    $money = $calculationMoney;
-                    $car = $memberCarInfo;
+                    $money  = $load['cost'];
+                    $code   = $load['code'];
+                    $car    = $memberCarInfo;
                     if ($money === 0) {
                         break;
                     }
@@ -140,39 +147,53 @@ class MemberCar extends SuperCar
             return error('结算金额异常');
         }
 
+        // 消息
+        $message = '请缴费' . round_dollar($money) . '元';
+        $broadcast = '请缴费' . round_dollar($money) . '元';
+
+        // 储值卡车
+        if ($car['car_type'] == CarType::STORE_CARD_CAR) {
+            if ($money > 0) {
+                if ($money > $car['balance']) {
+                    $money = $money - $car['balance'];
+                    $message = '此卡余额不足,请缴费' . round_dollar($money) . '元';
+                    $broadcast = '此卡余额不足,请缴费' . round_dollar($money) . '元';
+                } else {
+                    // 扣费
+                    if (!$carModel->storeCardCarChangeBalance($car['id'], $entry['car_number'], $money, $entry['id'])) {
+                        return error('此储值卡车扣费失败');
+                    }
+                    // 已扣完费
+                    $money = 0;
+                }
+            }
+        }
+
         // 通行方式
         if ($money === 0) {
             $signalType = SignalType::PASS_SUCCESS;
-            $passType = PassType::NORMAL_PASS;
+            $passType   = PassType::NORMAL_PASS;
         } else {
             $signalType = SignalType::CONFIRM_NORMAL_CANCEL;
-            $passType = PassType::WAIT_PASS;
+            $passType   = PassType::WAIT_PASS;
         }
 
         // 消息
         if ($signalType == SignalType::PASS_SUCCESS) {
             $message = '一路顺风';
             $broadcast = '一路顺风';
-        } else {
-            $message = '请缴费' . round_dollar($money) . '元';
-            $broadcast = '请缴费' . round_dollar($money) . '元';
-            if ($car['car_type'] == CarType::STORE_CARD_CAR) {
-                // 储值卡车
-                if ($money > $parameter['balance']) {
-                    $message = '此卡余额不足,请缴费' . round_dollar($money) . '元';
-                    $broadcast = '此卡余额不足,请缴费' . round_dollar($money) . '元';
-                }
-            }
         }
 
         return success([
-            'carType' => $car['car_type'],
-            'message' => $message,
-            'broadcast' => $broadcast,
+            'carType'    => $car['car_type'],
+            'carId'      => $car['id'],
+            'message'    => $message,
+            'broadcast'  => $broadcast,
             'signalType' => $signalType,
-            'passType' => $passType,
-            'money' => $money,
-            'pathId' => $pathId
+            'passType'   => $passType,
+            'money'      => $money,
+            'code'       => $code,
+            'pathId'     => $pathId
         ]);
     }
 
@@ -183,11 +204,34 @@ class MemberCar extends SuperCar
         $broadcast = '欢迎光临';
 
         return success([
-            'carType' => CarType::MEMBER_CAR,
-            'message' => $message,
-            'broadcast' => $broadcast,
+            'carType'    => CarType::MEMBER_CAR,
+            'message'    => $message,
+            'broadcast'  => $broadcast,
             'signalType' => SignalType::PASS_SUCCESS,
-            'passType' => PassType::NORMAL_PASS
+            'passType'   => PassType::NORMAL_PASS
+        ]);
+    }
+
+    public function normalPass (array $entry)
+    {
+        // 储值卡车
+        if ($entry['out_car_type'] == CarType::STORE_CARD_CAR) {
+            $carModel = new CarModel();
+            if (!$carInfo = $carModel->find([
+                'id' => $entry['car_id'], 'car_type' => CarType::STORE_CARD_CAR
+            ], 'balance')) {
+                return error('此储值卡车无效');
+            }
+            if (!$carModel->storeCardCarChangeBalance($entry['car_id'], $entry['car_number'], $carInfo['balance'], $entry['id'])) {
+                return error('此储值卡车扣费失败');
+            }
+        }
+
+        return success([
+            'message'    => '一路顺风',
+            'broadcast'  => '一路顺风',
+            'passType'   => PassType::NORMAL_PASS,
+            'signalType' => SignalType::PASS_SUCCESS,
         ]);
     }
 }

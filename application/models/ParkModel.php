@@ -34,6 +34,9 @@ class ParkModel extends Crud {
      */
     public function pass (array $post)
     {
+        // 值班员
+        $post['onduty_id'] = intval($post['onduty_id']);
+
         // 节点
         $post['node_id'] = intval($post['node_id']);
         $post['correction_record_id'] = intval($post['correction_record_id']);
@@ -52,7 +55,7 @@ class ParkModel extends Crud {
         $carPaths = $this->getCarType($post['car_number']);
 
         if (empty($carPaths['paths'])) {
-            return error(CarType::getMessage($carPaths['car_type']) . '，不能进场。');
+            return error(CarType::getMessage($carPaths['car_type']) . ',不能进场');
         }
 
         // 获取当前节点是起点的路径
@@ -138,11 +141,11 @@ class ParkModel extends Crud {
             }
             // 出场记录
             if (!$this->outModel->addOutInfo($entryCarInfo['id'])) {
-                return error('记录出场错误，请重试');
+                return error('记录出场错误,请重试');
             }
             // 既是终点又是起点
             return $this->pass([
-                'node_id' => $post['node_id'], 'car_number' => $post['car_number']
+                'node_id' => $post['node_id'], 'car_number' => $post['car_number'], 'onduty_id' => $post['onduty_id']
             ]);
         }
 
@@ -176,6 +179,59 @@ class ParkModel extends Crud {
 
         // todo 起竿&语音播报
         return $this->mid($post, $nodeInfo, $entryCarInfo, $correctPaths, $carPaths);
+    }
+
+    /**
+     * 正常放行
+     * @param id 流水号
+     * @param onduty_id 值班员
+     * @param node_id 出场节点
+     * @return array
+     */
+    public function normalPass ($post)
+    {
+        // 流水号
+        $post['id'] = intval($post['id']);
+        // 值班员
+        $post['onduty_id'] = intval($post['onduty_id']);
+        // 节点
+        $post['node_id'] = intval($post['node_id']);
+
+        // 查询在场车辆
+        if (!$entryCarInfo = $this->entryModel->getCarInfo($post['id'])) {
+            return error('该车无入场信息');
+        }
+
+        if ($entryCarInfo['current_node_id'] != $post['node_id']) {
+            return error('该车不能通过当前通道');
+        }
+
+        // 判断车类型
+        if ($entryCarInfo['out_car_type'] == CarType::TEMP_CAR) {
+            $className = \app\pdo\TempCar::class;
+        } else {
+            $className = \app\pdo\MemberCar::class;
+        }
+
+        $result = (new $className)->normalPass($entryCarInfo);
+        if ($result['errorcode'] !== 0) {
+            return $result;
+        }
+        $result = $result['result'];
+
+        // 保存在场信息
+        if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
+            'pass_type' => $result['passType'],
+            'onduty_id' => $post['onduty_id'],
+            'broadcast' => $result['broadcast'],
+            'signal_type' => $result['signalType'],
+            'real_money' => ['money']
+        ])) {
+            return error('正常放行失败,请重试');
+        }
+
+        // 返回信号
+        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signalType'], []);
     }
 
     /**
@@ -271,6 +327,7 @@ class ParkModel extends Crud {
 
         // 保存在场信息
         if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
+            'car_id' => $result['carId'],
             'out_car_type' => $result['carType'],
             'paths' => json_encode([$result['pathId']]),
             'money' => $result['money'],
@@ -280,7 +337,8 @@ class ParkModel extends Crud {
             'pass_type' => $result['passType'],
             'onduty_id' => $post['onduty_id'],
             'broadcast' => $result['broadcast'],
-            'signal_type' => $result['signalType']
+            'signal_type' => $result['signalType'],
+            'calculation_process' => $result['code']
         ])) {
             return error('出场错误,请重试');
         }
@@ -319,6 +377,7 @@ class ParkModel extends Crud {
         // 添加入场信息
         if (!$id = $this->entryModel->addEntryInfo([
             'car_type' => $carPaths['car_type'],
+            'car_id' => $result['carId'],
             'entry_car_type' => $result['carType'],
             'original_car_number' => $post['original_car_number'],
             'car_number' => $post['car_number'],

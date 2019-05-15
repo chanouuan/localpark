@@ -35,24 +35,26 @@ class TempCar extends SuperCar
         }
 
         return success([
-            'carType' => $carType,
-            'message' => $message,
-            'broadcast' => $broadcast,
+            'carType'    => $carType,
+            'message'    => $message,
+            'broadcast'  => $broadcast,
             'signalType' => $signalType,
-            'passType' => $passType
+            'passType'   => $passType
         ]);
     }
 
     public function out (array $entry, array $parameter, array $paths, array $carPaths)
     {
         $pathId = null;
-        $money = null;
+        $money  = null;
+        $code   = null;
         // 查找最便宜的一条路
         foreach ($paths as $k => $v) {
-            if (false !== ($calculationMoney = $this->calculationCode($parameter, $v['calculation_code']))) {
-                if (empty($pathId) || $money > $calculationMoney) {
-                    $pathId = $v['id'];
-                    $money = $calculationMoney;
+            if (false !== ($load = $this->calculationCode($parameter, $v['calculation_code']))) {
+                if (empty($pathId) || $money > $load['cost']) {
+                    $pathId = $v['path_id'];
+                    $money  = $load['cost'];
+                    $code   = $load['code'];
                     if ($money === 0) {
                         break;
                     }
@@ -68,10 +70,10 @@ class TempCar extends SuperCar
         // 通行方式
         if ($money === 0) {
             $signalType = SignalType::PASS_SUCCESS;
-            $passType = PassType::NORMAL_PASS;
+            $passType   = PassType::NORMAL_PASS;
         } else {
             $signalType = SignalType::CONFIRM_NORMAL_CANCEL;
-            $passType = PassType::WAIT_PASS;
+            $passType   = PassType::WAIT_PASS;
         }
 
         if ($signalType == SignalType::PASS_SUCCESS) {
@@ -83,13 +85,14 @@ class TempCar extends SuperCar
         }
 
         return success([
-            'carType' => CarType::TEMP_CAR,
-            'message' => $message,
-            'broadcast' => $broadcast,
+            'carType'    => CarType::TEMP_CAR,
+            'message'    => $message,
+            'broadcast'  => $broadcast,
             'signalType' => $signalType,
-            'passType' => $passType,
-            'money' => $money,
-            'pathId' => $pathId
+            'passType'   => $passType,
+            'money'      => $money,
+            'code'       => $code,
+            'pathId'     => $pathId
         ]);
     }
 
@@ -107,11 +110,22 @@ class TempCar extends SuperCar
         $broadcast = '欢迎光临';
 
         return success([
-            'carType' => $carType,
-            'message' => $message,
-            'broadcast' => $broadcast,
+            'carType'    => $carType,
+            'message'    => $message,
+            'broadcast'  => $broadcast,
             'signalType' => SignalType::PASS_SUCCESS,
-            'passType' => PassType::NORMAL_PASS
+            'passType'   => PassType::NORMAL_PASS
         ]);
     }
+
+    public function normalPass (array $entry)
+    {
+        return success([
+            'message'    => '一路顺风',
+            'broadcast'  => '一路顺风',
+            'passType'   => PassType::NORMAL_PASS,
+            'signalType' => SignalType::PASS_SUCCESS,
+        ]);
+    }
+
 }

@@ -10,6 +10,58 @@ class CarModel extends Crud {
     protected $table = 'chemi_car';
 
     /**
+     * 更新车辆信息
+     * @return bool
+     */
+    public function saveCar (array $data, array $condition)
+    {
+        return $this->getDb()->update($this->table, $data, $condition);
+    }
+
+    /**
+     * 储值卡车扣费
+     * @param $car_id
+     * @param $car_number
+     * @param $cost
+     * @param $pass_id
+     * @return bool
+     */
+    public function storeCardCarChangeBalance ($car_id, $car_number, $cost, $pass_id)
+    {
+        // 重复起竿 (起竿后车辆不通过)，会造成重复扣费
+        $tradeInfo = $this->getDb()->table('chemi_car_trade')->field('money')->where(['pass_id' => $pass_id, 'car_id' => $car_id])->order('id desc')->limit(1)->find();
+        if ($tradeInfo) {
+            if ($tradeInfo['money'] == $cost) {
+                return true;
+            }
+        }
+        // 扣除余额
+        if (!$this->saveCar(['balance' => ['balance-' . $cost]], ['id' => $car_id])) {
+            return false;
+        }
+        // 记录变动
+        return $this->saveCarTrade([
+            'title' => '储值卡车扣费',
+            'car_id' => $car_id,
+            'car_number' => $car_number,
+            'pass_id' => $pass_id,
+            'money' => $cost
+        ]);
+    }
+
+    /**
+     * 保存计费记录
+     * @param $data
+     * @return bool
+     */
+    public function saveCarTrade ($data)
+    {
+        $data['mark'] = '-';
+        $data['create_time'] = date('Y-m-d H:i:s', TIMESTAMP);
+        return $this->getDb()->insert('chemi_car_trade', $data);
+    }
+
+    /**
      * 查询车牌号对应的路径
      * @param $car_number
      * @return array

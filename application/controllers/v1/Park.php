@@ -23,6 +23,7 @@ class Park extends ActionPDO {
 
     /**
      * 车辆进出场
+     * @login
      * @param *car_number 车牌号
      * @param *node_id 通道ID
      * @return array
@@ -34,7 +35,9 @@ class Park extends ActionPDO {
      */
     public function pass ()
     {
-        return (new ParkModel())->pass(only('car_number', 'node_id'));
+        return (new ParkModel())->pass([
+            'node_id' => $_POST['node_id'], 'car_number' => $_POST['car_number'], 'onduty_id' => $this->_G['user']['uid']
+        ]);
     }
 
 }

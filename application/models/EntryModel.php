@@ -11,14 +11,17 @@ class EntryModel extends Crud {
 
     /**
      * 获取在场车辆信息
-     * @param $car_number
+     * @param $id id/车牌号
      * @return array
      */
-    public function getCarInfo ($car_number)
+    public function getCarInfo ($id)
     {
-        $info = $this->find([
-            'car_number' => $car_number
-        ], 'id,car_type,entry_car_type,out_car_type,paths,current_node_id,last_nodes,broadcast,update_time,version_count,pass_type');
+        if (is_integer($id)) {
+            $condition['id'] = $id;
+        } else {
+            $condition['car_number'] = $id;
+        }
+        $info = $this->find($condition, 'id,car_type,car_id,car_number,entry_car_type,out_car_type,paths,current_node_id,last_nodes,update_time,version_count,pass_type');
         if ($info) {
             // 当前路径
             $info['paths'] = $info['paths'] ? json_decode($info['paths'], true) : [];
