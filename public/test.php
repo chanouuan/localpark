@@ -134,6 +134,11 @@ function similarCarNumber($first, array $second)
 //print_r(similarCarNumber('云A251JJ', $all_car_number));
 //echo microtime(true)-$a;
 //print_r($result);
-$a = \app\pdo\TempCar::class;
-var_dump((new $a)->entry([]));
+
+$list = \app\library\DB::getInstance()
+    ->table('chemi_car car left join chemi_entry entry on entry.car_id = car.id')
+    ->field('car.car_number')
+    ->where('car.status = 1 and entry.id is null')->select();
+print_r($list);
+
 

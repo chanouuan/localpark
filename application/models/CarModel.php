@@ -138,7 +138,10 @@ class CarModel extends Crud {
      */
     public function getAllNoEntryCarNumber ()
     {
-        $list = $this->select(['is_entry' => 0], 'car_number');
+        $list = $this->getDb()
+            ->table('chemi_car car left join chemi_entry entry on entry.car_id = car.id')
+            ->field('car.car_number')
+            ->where('car.status = 1 and entry.id is null')->select();
         if ($list) {
             $list = array_column($list, 'car_number');
         }

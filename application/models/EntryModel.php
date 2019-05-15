@@ -43,8 +43,6 @@ class EntryModel extends Crud {
         if (!$id = $this->getDb()->insert($this->table, $data, null, false, true)) {
             return false;
         }
-        // 更新车辆入场状态
-        $this->getDb()->update('chemi_car', ['is_entry' => 1], ['car_number' => $data['car_number']]);
         // 更新车位数
         if ($data['car_type'] == CarType::TEMP_CAR) {
             // 临时车车位数-1
@@ -80,15 +78,6 @@ class EntryModel extends Crud {
             'id' => $entryInfo['id'], 'version_count' => $entryInfo['version_count']
         ])) {
             return false;
-        }
-        // 出场状态
-        if ($data['out_car_type']) {
-            // 更新车辆入场状态/出场时间
-            $this->getDb()->update('chemi_car', [
-                'is_entry' => 0, 'out_time' => $data['update_time']
-            ], [
-                'car_number' => $entryInfo['car_number']
-            ]);
         }
         // 不是重复提交
         if ($entryInfo['current_node_id'] != $data['current_node_id']) {
@@ -138,12 +127,6 @@ class EntryModel extends Crud {
         if (!$this->getDb()->delete($this->table, ['id' => $entryInfo['id']])) {
             return false;
         }
-        // 更新车入场状态
-        $this->getDb()->update('chemi_car', [
-            'is_entry' => 0
-        ], [
-            'car_number' => $entryInfo['car_number']
-        ]);
         // 更新车位数
         if ($entryInfo['car_type'] == CarType::TEMP_CAR) {
             // 临时车车位数+1
