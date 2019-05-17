@@ -7,6 +7,7 @@ namespace app\pdo;
 
 use app\common\CarType;
 use app\common\SignalType;
+use app\common\PassType;
 use app\models\CarModel;
 
 class MemberCar extends SuperCar
@@ -90,12 +91,12 @@ class MemberCar extends SuperCar
         }
 
         return success([
-            'carType'    => $carType,
-            'carId'      => $carId,
-            'message'    => implode('', $message),
-            'broadcast'  => implode('', $broadcast),
-            'signalType' => $signalType,
-            'passType'   => $passType
+            'car_type'    => $carType,
+            'car_id'      => $carId,
+            'message'     => implode('', $message),
+            'broadcast'   => implode('', $broadcast),
+            'signal_type' => $signalType,
+            'pass_type'   => $passType
         ]);
     }
 
@@ -127,7 +128,7 @@ class MemberCar extends SuperCar
             }
             $pathInfo = $paths[$v['path_id']];
             $parameter['车辆类型'] = CarType::getMessage($memberCarInfo['car_type']);
-            $parameter['available'] = $entry['entry_car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
+            $parameter['available'] = $entry['last_nodes'][0]['car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
             $parameter['余额'] = $memberCarInfo['balance'];
             if (false !== ($load = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
                 if (empty($pathId) || $money > $load['cost']) {
@@ -185,53 +186,67 @@ class MemberCar extends SuperCar
         }
 
         return success([
-            'carType'    => $car['car_type'],
-            'carId'      => $car['id'],
-            'message'    => $message,
-            'broadcast'  => $broadcast,
-            'signalType' => $signalType,
-            'passType'   => $passType,
-            'money'      => $money,
-            'code'       => $code,
-            'pathId'     => $pathId
+            'car_type'    => $car['car_type'],
+            'car_id'      => $car['id'],
+            'message'     => $message,
+            'broadcast'   => $broadcast,
+            'signal_type' => $signalType,
+            'pass_type'   => $passType,
+            'money'       => $money,
+            'code'        => $code,
+            'path_id'     => $pathId
         ]);
     }
 
-    public function mid (array $node)
+    public function mid (array $entry, array $node)
     {
         // 消息
         $message = '欢迎光临';
         $broadcast = '欢迎光临';
 
+        $carType = CarType::isMemberCar($entry['current_car_type']) ? $entry['current_car_type'] : CarType::MEMBER_CAR;
+
         return success([
-            'carType'    => CarType::MEMBER_CAR,
-            'message'    => $message,
-            'broadcast'  => $broadcast,
-            'signalType' => SignalType::PASS_SUCCESS,
-            'passType'   => PassType::NORMAL_PASS
+            'car_type'    => $carType,
+            'message'     => $message,
+            'broadcast'   => $broadcast,
+            'signal_type' => SignalType::PASS_SUCCESS,
+            'pass_type'   => PassType::NORMAL_PASS
         ]);
     }
 
     public function normalPass (array $entry)
     {
         // 储值卡车
-        if ($entry['out_car_type'] == CarType::STORE_CARD_CAR) {
+        if ($entry['current_car_type'] == CarType::STORE_CARD_CAR) {
             $carModel = new CarModel();
             if (!$carInfo = $carModel->find([
                 'id' => $entry['car_id'], 'car_type' => CarType::STORE_CARD_CAR
             ], 'balance')) {
                 return error('此储值卡车无效');
             }
+            // 扣费
             if (!$carModel->storeCardCarChangeBalance($entry['car_id'], $entry['car_number'], $carInfo['balance'], $entry['id'])) {
                 return error('此储值卡车扣费失败');
             }
         }
 
         return success([
-            'message'    => '一路顺风',
-            'broadcast'  => '一路顺风',
-            'passType'   => PassType::NORMAL_PASS,
-            'signalType' => SignalType::PASS_SUCCESS,
+            'message'     => '一路顺风',
+            'broadcast'   => '一路顺风',
+            'pass_type'   => PassType::NORMAL_PASS,
+            'signal_type' => SignalType::PASS_SUCCESS,
+        ]);
+    }
+
+    public function revokePass (array $entry, $node_id)
+    {
+        return success([
+            'car_type'    => CarType::MEMBER_CAR,
+            'message'     => '撤销放行',
+            'broadcast'   => '撤销放行',
+            'pass_type'   => PassType::REVOKE_PASS,
+            'signal_type' => SignalType::NONE
         ]);
     }
 }

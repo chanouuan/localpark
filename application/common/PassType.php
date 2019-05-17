@@ -7,16 +7,16 @@ namespace app\common;
 
 class PassType
 {
-    const WAIT_PASS     = 0;
     const NORMAL_PASS   = 1;
     const ABNORMAL_PASS = 2;
+    const WAIT_PASS     = 4;
     const REVOKE_PASS   = 5;
 
     static $message = [
-        0 => '等待放行',
         1 => '正常通行',
         2 => '异常放行',
-        5 => '撤销出场'
+        4 => '等待放行',
+        5 => '撤销通行'
     ];
 
     public static function getMessage ($code)

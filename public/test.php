@@ -135,10 +135,17 @@ function similarCarNumber($first, array $second)
 //echo microtime(true)-$a;
 //print_r($result);
 
+
 $list = \app\library\DB::getInstance()
-    ->table('chemi_car car left join chemi_entry entry on entry.car_id = car.id')
-    ->field('car.car_number')
-    ->where('car.status = 1 and entry.id is null')->select();
+    ->table('chemi_car_child child left join chemi_entry entry on entry.car_number = child.car_number')
+    ->field('child.car_number')
+    ->where('entry.id is null')->select();
 print_r($list);
+
+$lastNodes=[1,2,3];
+array_pop($lastNodes);
+$endNode = end($lastNodes);
+var_dump($endNode);
+var_dump($lastNodes);
 
 

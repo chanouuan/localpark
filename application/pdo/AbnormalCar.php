@@ -44,12 +44,44 @@ class AbnormalCar extends SuperCar
         }
 
         return success([
-            'carType' => CarType::ABNORMAL_CAR,
-            'message' => $message,
-            'broadcast' => $broadcast,
-            'signalType' => $signalType,
-            'passType' => PassType::ABNORMAL_PASS,
-            'money' => $money
+            'car_type'    => CarType::ABNORMAL_CAR,
+            'message'     => $message,
+            'broadcast'   => $broadcast,
+            'signal_type' => $signalType,
+            'pass_type'   => PassType::ABNORMAL_PASS,
+            'money'       => $money
+        ]);
+    }
+
+    public function abnormalPass ($node_id)
+    {
+        $nodeModel = new \app\models\NodeModel();
+        if (!$nodeInfo = $nodeModel->getNode($node_id)) {
+            return error('该节点不存在');
+        }
+        $money = 0;
+        if ($nodeInfo['abnormal_car_pass_way'] == AbnormalCarPassWay::CHARGE) {
+            $money = $nodeInfo['abnormal_car_charge'] < 0 ? 0 : $nodeInfo['abnormal_car_charge'];
+        }
+
+        return success([
+            'car_type'    => CarType::ABNORMAL_CAR,
+            'message'     => '一路顺风',
+            'broadcast'   => '一路顺风',
+            'pass_type'   => PassType::ABNORMAL_PASS,
+            'signal_type' => SignalType::PASS_SUCCESS,
+            'money'       => $money
+        ]);
+    }
+
+    public function revokePass (array $entry, $node_id)
+    {
+        return success([
+            'car_type'    => CarType::ABNORMAL_CAR,
+            'message'     => '撤销放行',
+            'broadcast'   => '撤销放行',
+            'pass_type'   => PassType::REVOKE_PASS,
+            'signal_type' => SignalType::NONE
         ]);
     }
 

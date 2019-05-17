@@ -69,11 +69,11 @@ class CarModel extends Crud {
     public function queryCarPaths ($car_number)
     {
         $list = $this->getDb()
-            ->table('chemi_car_path')
-            ->field('id,car_id,path_id,car_number,place_count,place_left')
+            ->table('chemi_car_child child inner join chemi_car_path path on path.id = child.car_path_id')
+            ->field('path.id,path.car_id,path.path_id,path.car_number,path.place_count,path.place_left')
             ->where([
-                'JSON_CONTAINS(car_number,\'"' . $car_number . '"\')',
-                'status = 1'
+                'path.status' => 1,
+                'child.car_number' => $car_number
             ])
             ->select();
         if ($list) {
@@ -139,23 +139,14 @@ class CarModel extends Crud {
     public function getAllNoEntryCarNumber ()
     {
         $list = $this->getDb()
-            ->table('chemi_car car left join chemi_entry entry on entry.car_id = car.id')
-            ->field('car.car_number')
-            ->where('car.status = 1 and entry.id is null')->select();
+            ->table('chemi_car_child child left join chemi_entry entry on entry.car_number = child.car_number')
+            ->field('child.car_number')
+            ->where('entry.id is null')
+            ->select();
         if ($list) {
             $list = array_column($list, 'car_number');
         }
         return $list;
     }
 
-    /**
-     * 获取上次出场时间
-     * @param $car_number 车牌号
-     * @return date
-     */
-    public function getLastOutParkTime ($car_number)
-    {
-        $carInfo = $this->find(['car_number' => $car_number], 'out_time');
-        return $carInfo['out_time'] ? strtotime($carInfo['out_time']) : 0;
-    }
 }

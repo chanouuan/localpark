@@ -35,11 +35,11 @@ class TempCar extends SuperCar
         }
 
         return success([
-            'carType'    => $carType,
-            'message'    => $message,
-            'broadcast'  => $broadcast,
-            'signalType' => $signalType,
-            'passType'   => $passType
+            'car_type'    => $carType,
+            'message'     => $message,
+            'broadcast'   => $broadcast,
+            'signal_type' => $signalType,
+            'pass_type'   => $passType
         ]);
     }
 
@@ -85,18 +85,18 @@ class TempCar extends SuperCar
         }
 
         return success([
-            'carType'    => CarType::TEMP_CAR,
-            'message'    => $message,
-            'broadcast'  => $broadcast,
-            'signalType' => $signalType,
-            'passType'   => $passType,
-            'money'      => $money,
-            'code'       => $code,
-            'pathId'     => $pathId
+            'car_type'    => CarType::TEMP_CAR,
+            'message'     => $message,
+            'broadcast'   => $broadcast,
+            'signal_type' => $signalType,
+            'pass_type'   => $passType,
+            'money'       => $money,
+            'code'        => $code,
+            'path_id'     => $pathId
         ]);
     }
 
-    public function mid (array $node)
+    public function mid (array $entry, array $node)
     {
         $carType = CarType::TEMP_CAR;
 
@@ -110,21 +110,33 @@ class TempCar extends SuperCar
         $broadcast = '欢迎光临';
 
         return success([
-            'carType'    => $carType,
-            'message'    => $message,
-            'broadcast'  => $broadcast,
-            'signalType' => SignalType::PASS_SUCCESS,
-            'passType'   => PassType::NORMAL_PASS
+            'car_type'    => $carType,
+            'message'     => $message,
+            'broadcast'   => $broadcast,
+            'signal_type' => SignalType::PASS_SUCCESS,
+            'pass_type'   => PassType::NORMAL_PASS
         ]);
     }
 
     public function normalPass (array $entry)
     {
         return success([
-            'message'    => '一路顺风',
-            'broadcast'  => '一路顺风',
-            'passType'   => PassType::NORMAL_PASS,
-            'signalType' => SignalType::PASS_SUCCESS,
+            'car_type'    => CarType::TEMP_CAR,
+            'message'     => '一路顺风',
+            'broadcast'   => '一路顺风',
+            'pass_type'   => PassType::NORMAL_PASS,
+            'signal_type' => SignalType::PASS_SUCCESS
+        ]);
+    }
+
+    public function revokePass (array $entry, $node_id)
+    {
+        return success([
+            'car_type'    => CarType::TEMP_CAR,
+            'message'     => '撤销放行',
+            'broadcast'   => '撤销放行',
+            'pass_type'   => PassType::REVOKE_PASS,
+            'signal_type' => SignalType::NONE
         ]);
     }
 

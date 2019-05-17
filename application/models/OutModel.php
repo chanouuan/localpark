@@ -18,19 +18,29 @@ class OutModel extends Crud {
         if (empty($entryInfo = (new EntryModel())->find(['id' => $entry_id]))) {
             return false;
         }
-        if (!$this->getDb()->transaction(function ($db) use ($entryInfo){
-            if (!$db->delete('chemi_entry', 'id = ' . $entryInfo['id'])) {
-                return false;
-            }
-            $entryInfo['log_time'] = date('Y-m-d H:i:s', TIMESTAMP);
-            if (!$db->insert('chemi_out', $entryInfo)) {
-                return false;
-            }
-            return true;
-        })) {
+        // chemi_out 为 MyISAM，不能用事务
+        $entryInfo['log_time'] = date('Y-m-d H:i:s', TIMESTAMP);
+        if (!$this->getDb()->insert('chemi_out', $entryInfo)) {
+            return false;
+        }
+        if (!$this->getDb()->delete('chemi_entry', 'id = ' . $entry_id)) {
+            $this->getDb()->delete('chemi_out', 'id = ' . $entry_id);
             return false;
         }
         return true;
+    }
+
+    /**
+     * 获取上次出场时间
+     * @param $car_number 车牌号
+     * @return timestamp
+     */
+    public function getLastOutParkTime ($car_number)
+    {
+        $info = $this->find([
+            'car_number' => $car_number, 'dot' => \app\common\DotType::END_DOT
+        ], 'update_time', 'id desc');
+        return $info['update_time'] ? strtotime($info['update_time']) : 0;
     }
 
 }

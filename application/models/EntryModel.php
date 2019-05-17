@@ -2,8 +2,9 @@
 
 namespace app\models;
 
-use app\common\CarType;
 use Crud;
+use app\common\CarType;
+use app\common\DotType;
 
 class EntryModel extends Crud {
 
@@ -21,11 +22,11 @@ class EntryModel extends Crud {
         } else {
             $condition['car_number'] = $id;
         }
-        $info = $this->find($condition, 'id,car_type,car_id,car_number,entry_car_type,out_car_type,paths,current_node_id,last_nodes,update_time,version_count,pass_type');
+        $info = $this->find($condition, 'id,car_type,car_id,car_number,current_car_type,paths,current_node_id,last_nodes,version_count,pass_type,dot,update_time');
         if ($info) {
             // 当前路径
             $info['paths'] = $info['paths'] ? json_decode($info['paths'], true) : [];
-            // 节点记录 [{"node_id":node_id,"time":time}]
+            // 节点记录 [{"node_id":node_id,"car_type":car_type,"time":time}]
             $info['last_nodes'] = $info['last_nodes'] ? json_decode($info['last_nodes'], true) : [];
         }
         return $info;
@@ -54,7 +55,7 @@ class EntryModel extends Crud {
         }
         if ($data['car_type'] == CarType::MEMBER_CAR) {
             // 会员车车位数-1
-            if ($data['entry_car_type'] == CarType::CHILD_CAR) {
+            if ($data['current_car_type'] == CarType::CHILD_CAR) {
                 $this->getDb()->update('chemi_car_path', [
                     'place_left' => ['place_left-1']
                 ], 'place_left > 0 and JSON_CONTAINS(car_number,\'"' . $data['car_number'] . '"\')');
@@ -73,7 +74,7 @@ class EntryModel extends Crud {
     public function saveEntryInfo (array $entryInfo, array $data)
     {
         $data['version_count'] = ['version_count+1'];
-        $data['update_time'] = date('Y-m-d H:i:s', TIMESTAMP);
+        $data['update_time'] = $data['update_time'] ? $data['update_time'] : date('Y-m-d H:i:s', TIMESTAMP);
         if (!$this->getDb()->update($this->table, $data, [
             'id' => $entryInfo['id'], 'version_count' => $entryInfo['version_count']
         ])) {
@@ -82,15 +83,17 @@ class EntryModel extends Crud {
         // 不是重复提交
         if ($entryInfo['current_node_id'] != $data['current_node_id']) {
             // 更新车位数
-            if ($entryInfo['car_type'] == CarType::TEMP_CAR) {
+            if ($entryInfo['current_car_type'] == CarType::TEMP_CAR) {
                 // 临时车车位数+1
                 $this->getDb()->update('chemi_node', [
                     'temp_car_left' => ['temp_car_left+1']
                 ], [
                     'id' => $entryInfo['current_node_id'], 'temp_car_count' => ['>temp_car_left']
                 ]);
+            }
+            if ($data['current_car_type'] == CarType::TEMP_CAR) {
                 // 不是终点
-                if (!$data['out_car_type']) {
+                if ($data['dot'] != DotType::END_DOT) {
                     // 当前节点临时车车位数-1
                     $this->getDb()->update('chemi_node', [
                         'temp_car_left' => ['temp_car_left-1']
@@ -101,8 +104,8 @@ class EntryModel extends Crud {
             }
             if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
                 // 会员车车位数+1
-                if ($data['out_car_type']) {
-                    if ($entryInfo['entry_car_type'] == CarType::CHILD_CAR) {
+                if ($data['dot'] == DotType::END_DOT) {
+                    if ($entryInfo['last_nodes'][0]['car_type'] == CarType::CHILD_CAR) {
                         $this->getDb()->update('chemi_car_path', [
                             'place_left' => ['place_left+1']
                         ], 'place_count > place_left and JSON_CONTAINS(car_number,\'"' . $entryInfo['car_number'] . '"\')');
@@ -119,7 +122,7 @@ class EntryModel extends Crud {
      */
     public function removeEntryCar (array $entryInfo)
     {
-        if ($entryInfo['out_car_type']) {
+        if ($entryInfo['dot'] == DotType::END_DOT) {
             // 已经出场的车不能删除
             return false;
         }
@@ -128,7 +131,7 @@ class EntryModel extends Crud {
             return false;
         }
         // 更新车位数
-        if ($entryInfo['car_type'] == CarType::TEMP_CAR) {
+        if ($entryInfo['current_car_type'] == CarType::TEMP_CAR) {
             // 临时车车位数+1
             $this->getDb()->update('chemi_node', [
                 'temp_car_left' => ['temp_car_left+1']
@@ -143,19 +146,21 @@ class EntryModel extends Crud {
      * 连接节点
      * @param $last 上节点
      * @param $node_id 当前节点
+     * @param $car_type 当前车辆类型
      * @return string
      */
-    public function connectNode (array $last, $node_id)
+    public function connectNode (array $last, $node_id, $car_type)
     {
         $nodeSize = count($last);
         if ($nodeSize > 0) {
             if ($last[$nodeSize - 1]['node_id'] == $node_id) {
+                $last[$nodeSize - 1]['car_type'] = $car_type;
                 $last[$nodeSize - 1]['time'] = date('Y-m-d H:i:s', TIMESTAMP);
                 return $last;
             }
         }
         $last[] = [
-            'node_id' => $node_id, 'time' => date('Y-m-d H:i:s', TIMESTAMP)
+            'node_id' => $node_id, 'car_type' => $car_type, 'time' => date('Y-m-d H:i:s', TIMESTAMP)
         ];
         return $last;
     }
@@ -212,17 +217,21 @@ class EntryModel extends Crud {
         }
         // 按平均法修补节点
         $diffTime = intval((TIMESTAMP - strtotime($entryCarInfo['update_time'])) / (count($passNodes) + 1));
+        $updateTime = null;
         foreach ($passNodes as $k => $v) {
+            $updateTime = date('Y-m-d H:i:s', $entryCarInfo['update_time'] + ($diffTime * ($k + 1)));
             $entryCarInfo['last_nodes'][] = [
                 'node_id' => $v,
-                'time' => date('Y-m-d H:i:s', $entryCarInfo['update_time'] + ($diffTime * ($k + 1))),
+                'car_type' => $entryCarInfo['current_car_type'],
+                'time' => $updateTime,
                 'auto' => 1
             ];
         }
         $param = [
             'paths' => json_encode([$pathId]),
             'current_node_id' => end($passNodes),
-            'last_nodes' => json_encode($entryCarInfo['last_nodes'])
+            'last_nodes' => json_encode($entryCarInfo['last_nodes']),
+            'update_time' => $updateTime
         ];
         if (!$this->saveEntryInfo($entryCarInfo, $param)) {
             return false;

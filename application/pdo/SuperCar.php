@@ -34,42 +34,66 @@ abstract class SuperCar
 
     /**
      * 中场
+     * @param array $entry 入场信息
      * @param array $node 节点信息
      * @return array
      */
-    public function mid (array $node)
+    public function mid (array $entry, array $node)
     {
         return error('未知中场');
     }
 
     /**
-     * 正常通行
+     * 正常放行
      * @param array $entry 入场信息
      * @return array
      */
     public function normalPass (array $entry)
     {
-        return error('不能正常通行');
+        return error('不能正常放行');
+    }
+
+    /**
+     * 异常放行
+     * @param $node_id 节点ID
+     * @return array
+     */
+    public function abnormalPass ($node_id)
+    {
+        return error('不能异常放行');
+    }
+
+    /**
+     * 撤销放行
+     * @param array $entry 入场信息
+     * @param $node_id 节点ID
+     * @return array
+     */
+    public function revokePass (array $entry, $node_id)
+    {
+        return error('不能撤销放行');
     }
 
     /**
      * 计算计费金额
      * @param $parameter
      * @param $code
-     * @return int (分)
+     * @return array {"cost":分,"code":计算过程}
      */
     protected function calculationCode (array $parameter, $code)
     {
-        $list = $parameter;
+        if (empty($code)) {
+            return false;
+        }
         extract($parameter);
         $cost = @eval($code);
         if (null === $cost || false === $cost) {
             return false;
         }
-        foreach ($list as $k => $v) {
+        foreach ($parameter as $k => $v) {
             $code = str_replace(['${"' . $k . '"}', '${\'' . $k . '\'}', '$' . $k], '{' . $v . '}', $code);
         }
-        unset($list, $parameter);
+        unset($parameter);
         $cost = intval($cost);
         $cost = $cost < 0 ? 0 : $cost;
         return [

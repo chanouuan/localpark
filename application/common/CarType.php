@@ -34,6 +34,20 @@ class CarType
         100 => '会员车'
     ];
 
+    /**
+     * 是否会员车
+     * @param $code
+     * @return bool
+     */
+    public static function isMemberCar ($code)
+    {
+        return in_array($code, [
+            self::MONTH_CARD_CAR, self::VIP_CAR,   self::FIXED_CAR,
+            self::STORE_CARD_CAR, self::CHILD_CAR, self::ORDINARY_CAR,
+            self::INVALID_CAR,    self::PAY_CAR,   self::MEMBER_CAR
+        ]);
+    }
+
     public static function getMessage ($code)
     {
         return isset(self::$message[$code]) ? self::$message[$code] : '';
