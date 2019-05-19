@@ -428,7 +428,11 @@ class ParkModel extends Crud {
         }
 
         // 返回信号
-        return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signal_type'], []);
+        return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signal_type'], [
+            'car_type'            => CarType::getMessage($result['car_type']),
+            'original_car_number' => $post['original_car_number'],
+            'car_number'          => $post['car_number']
+        ]);
     }
 
     /**
@@ -476,7 +480,11 @@ class ParkModel extends Crud {
         }
 
         // 返回信号
-        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signal_type'], []);
+        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signal_type'], [
+            'car_type'            => CarType::getMessage($result['car_type']),
+            'original_car_number' => $post['original_car_number'],
+            'car_number'          => $post['car_number']
+        ]);
     }
 
     /**
@@ -545,7 +553,12 @@ class ParkModel extends Crud {
         }
 
         // 返回信号
-        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signal_type'], []);
+        return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signal_type'], [
+            'car_type'            => CarType::getMessage($result['car_type']),
+            'original_car_number' => $post['original_car_number'],
+            'car_number'          => $post['car_number'],
+            'money'               => $result['money']
+        ]);
     }
 
     /**
@@ -630,7 +643,12 @@ class ParkModel extends Crud {
         }
 
         // 返回信号
-        return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signal_type'], []);
+        return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signal_type'], [
+            'car_type'            => CarType::getMessage($result['car_type']),
+            'original_car_number' => $post['original_car_number'],
+            'car_number'          => $post['car_number'],
+            'money'               => $result['money']
+        ]);
     }
 
     /**

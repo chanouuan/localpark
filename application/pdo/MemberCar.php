@@ -116,10 +116,11 @@ class MemberCar extends SuperCar
         $memberCars = $carModel->validationMemberCarType(array_column($carPaths, 'car_id'));
         $memberCars = array_column($memberCars, null, 'id');
 
-        $pathId = null;
-        $money  = null;
-        $code   = null;
-        $car    = null;
+        $pathId  = null;
+        $money   = null;
+        $code    = null;
+        $carInfo = null;
+        $carType = null;
         // 查找最便宜的一条路
         foreach ($carPaths as $k => $v) {
             $memberCarInfo = $memberCars[$v['car_id']];
@@ -127,15 +128,24 @@ class MemberCar extends SuperCar
                 continue;
             }
             $pathInfo = $paths[$v['path_id']];
+            $memberCarType = $memberCarInfo['car_type'];
+            if (!$memberCarInfo['available']) {
+                $memberCarType = CarType::INVALID_CAR;
+            } else {
+                if (count($v['car_number']) > 1) {
+                    $memberCarType = $entry['last_nodes'][0]['car_type'] == CarType::PAY_CAR ? CarType::PAY_CAR : CarType::CHILD_CAR;
+                }
+            }
             $parameter['车辆类型'] = CarType::getMessage($memberCarInfo['car_type']);
-            $parameter['available'] = $entry['last_nodes'][0]['car_type'] == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
+            $parameter['available'] = $memberCarType == CarType::PAY_CAR ? false : $memberCarInfo['available']; // 注意判断缴费车
             $parameter['余额'] = $memberCarInfo['balance'];
             if (false !== ($load = $this->calculationCode($parameter, $pathInfo['calculation_code']))) {
                 if (empty($pathId) || $money > $load['cost']) {
-                    $pathId = $v['path_id'];
-                    $money  = $load['cost'];
-                    $code   = $load['code'];
-                    $car    = $memberCarInfo;
+                    $pathId  = $v['path_id'];
+                    $money   = $load['cost'];
+                    $code    = $load['code'];
+                    $carInfo = $memberCarInfo;
+                    $carType = $memberCarType;
                     if ($money === 0) {
                         break;
                     }
@@ -153,15 +163,15 @@ class MemberCar extends SuperCar
         $broadcast = '请缴费' . round_dollar($money) . '元';
 
         // 储值卡车
-        if ($car['car_type'] == CarType::STORE_CARD_CAR) {
+        if ($carInfo['car_type'] == CarType::STORE_CARD_CAR) {
             if ($money > 0) {
-                if ($money > $car['balance']) {
-                    $money = $money - $car['balance'];
+                if ($money > $carInfo['balance']) {
+                    $money = $money - $carInfo['balance'];
                     $message = '此卡余额不足,请缴费' . round_dollar($money) . '元';
                     $broadcast = '此卡余额不足,请缴费' . round_dollar($money) . '元';
                 } else {
                     // 扣费
-                    if (!$carModel->storeCardCarChangeBalance($car['id'], $entry['car_number'], $money, $entry['id'])) {
+                    if (!$carModel->storeCardCarChangeBalance($carInfo['id'], $entry['car_number'], $money, $entry['id'])) {
                         return error('此储值卡车扣费失败');
                     }
                     // 已扣完费
@@ -186,8 +196,8 @@ class MemberCar extends SuperCar
         }
 
         return success([
-            'car_type'    => $car['car_type'],
-            'car_id'      => $car['id'],
+            'car_type'    => $carType,
+            'car_id'      => $carInfo['id'],
             'message'     => $message,
             'broadcast'   => $broadcast,
             'signal_type' => $signalType,
