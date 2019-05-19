@@ -38,6 +38,7 @@ class Park extends ActionPDO {
      * @login
      * @param *car_number 车牌号
      * @param *node_id 通道ID
+     * @param error_count 手动纠错车牌,此值为1
      * @return array
      * {
      * "errNo":0, // 错误码 0成功 -1失败
@@ -53,7 +54,7 @@ class Park extends ActionPDO {
     public function pass ()
     {
         return (new ParkModel())->pass([
-            'node_id' => $_POST['node_id'], 'car_number' => $_POST['car_number'], 'onduty_id' => $this->_G['user']['uid']
+            'node_id' => $_POST['node_id'], 'car_number' => $_POST['car_number'], 'error_count' => $_POST['error_count'], 'onduty_id' => $this->_G['user']['uid']
         ]);
     }
 
@@ -70,7 +71,7 @@ class Park extends ActionPDO {
      *     "id":1, //流水号
      *     "message":"一路顺风", //提示消息
      *     "broadcast":"一路顺风", //语音播报文字
-     *     "status":1, //信号状态 1起竿放行
+     *     "status":1, //信号状态 1起竿放行 2弹窗+异常放行+禁止通行 3弹窗+正常放行+撤销出场
      *     "data":[], //显示数据
      * }}
      */

@@ -38,7 +38,7 @@ class OutModel extends Crud {
     public function getLastOutParkTime ($car_number)
     {
         $info = $this->find([
-            'car_number' => $car_number, 'dot' => \app\common\DotType::END_DOT
+            'car_number' => $car_number, 'dot' => ['in', [\app\common\DotType::END_DOT, \app\common\DotType::END_START_DOT]]
         ], 'update_time', 'id desc');
         return $info['update_time'] ? strtotime($info['update_time']) : 0;
     }

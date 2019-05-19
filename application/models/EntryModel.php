@@ -93,7 +93,7 @@ class EntryModel extends Crud {
             }
             if ($data['current_car_type'] == CarType::TEMP_CAR) {
                 // 不是终点
-                if ($data['dot'] != DotType::END_DOT) {
+                if (!DotType::isEndDot($data['dot'])) {
                     // 当前节点临时车车位数-1
                     $this->getDb()->update('chemi_node', [
                         'temp_car_left' => ['temp_car_left-1']
@@ -104,7 +104,7 @@ class EntryModel extends Crud {
             }
             if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
                 // 会员车车位数+1
-                if ($data['dot'] == DotType::END_DOT) {
+                if (DotType::isEndDot($data['dot'])) {
                     if ($entryInfo['last_nodes'][0]['car_type'] == CarType::CHILD_CAR) {
                         $this->getDb()->update('chemi_car_path', [
                             'place_left' => ['place_left+1']
@@ -122,7 +122,7 @@ class EntryModel extends Crud {
      */
     public function removeEntryCar (array $entryInfo)
     {
-        if ($entryInfo['dot'] == DotType::END_DOT) {
+        if (DotType::isEndDot($entryInfo['dot'])) {
             // 已经出场的车不能删除
             return false;
         }

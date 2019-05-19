@@ -37,9 +37,9 @@ class ParkModel extends Crud {
     {
         // 值班员
         $post['onduty_id'] = intval($post['onduty_id']);
-
         // 节点
-        $post['node_id'] = intval($post['node_id']);
+        $post['node_id']   = intval($post['node_id']);
+
         $post['correction_record_id'] = intval($post['correction_record_id']);
 
         // 车牌号验证
@@ -132,7 +132,7 @@ class ParkModel extends Crud {
                 return $this->pass($post);
             }
             // todo 出场&计费
-            $outResult = $this->out($post, $entryCarInfo, $correctPaths, $carPaths);
+            $outResult = $this->out($post, $entryCarInfo, $correctPaths, $carPaths, !empty($startPaths));
             if ($outResult['errorcode'] !== 0) {
                 return $outResult;
             }
@@ -237,6 +237,17 @@ class ParkModel extends Crud {
             'update_time' => $entryCarInfo['update_time'] // 注意这里意为不更新此值
         ])) {
             return error('正常放行失败,请重试');
+        }
+
+        // 既是终点又是起点
+        if ($entryCarInfo['dot'] == DotType::END_START_DOT) {
+            // 出场记录
+            if (!$this->outModel->addOutInfo($entryCarInfo['id'])) {
+                return error('记录出场错误,请重试');
+            }
+            return $this->pass([
+                'node_id' => $post['node_id'], 'car_number' => $entryCarInfo['car_number'], 'onduty_id' => $post['onduty_id']
+            ]);
         }
 
         // 返回信号
@@ -474,9 +485,10 @@ class ParkModel extends Crud {
      * @param $entryCarInfo 入场信息
      * @param $paths 正确路径
      * @param $carPaths {car_type:会员车类型,car_path:会员车路径}
+     * @param $isStartNode 是否起点
      * @return array
      */
-    protected function out (array $post, array $entryCarInfo, array $paths, array $carPaths)
+    protected function out (array $post, array $entryCarInfo, array $paths, array $carPaths, $isStartNode)
     {
         $nodes = $this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $carPaths['car_type']);
         $parameter = [
@@ -527,7 +539,7 @@ class ParkModel extends Crud {
             'broadcast'         => $result['broadcast'],
             'signal_type'       => $result['signal_type'],
             'code_process'      => $result['code'],
-            'dot'               => DotType::END_DOT
+            'dot'               => DotType::getEndDot($isStartNode)
         ])) {
             return error('出场错误,请重试');
         }
@@ -592,7 +604,7 @@ class ParkModel extends Crud {
                     'onduty_id'         => $post['onduty_id'],
                     'broadcast'         => $result['broadcast'],
                     'signal_type'       => $result['signal_type'],
-                    'dot'               => DotType::END_DOT
+                    'dot'               => DotType::getEndDot()
                 ])) {
                     return error('出场错误,请重试');
                 }
@@ -716,7 +728,7 @@ class ParkModel extends Crud {
     {
         $original_car_number = $original_car_number ? $original_car_number : $car_number;
 
-        if (array_intersect($errorScene, ['ENTRY', 'START_NODE'])) {
+        if (array_intersect($errorScene, ['ENTRY', 'START_NODE']) == ['ENTRY', 'START_NODE']) {
             // 进场，有入场信息
             // 1.重复起竿 (起竿后车辆不通过)
             // 2.上次入场记录未移到进出场记录表
@@ -728,7 +740,7 @@ class ParkModel extends Crud {
                     // 重复进场
                     $record = $this->entryModel->removeEntryCar($entryCarInfo);
                 } else {
-                    if ($entryCarInfo['dot'] == DotType::END_DOT) {
+                    if (DotType::isEndDot($entryCarInfo['dot'])) {
                         // 已出场
                         $record = $this->outModel->addOutInfo($entryCarInfo['id']);
                     } else {
