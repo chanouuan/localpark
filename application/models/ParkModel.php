@@ -879,7 +879,7 @@ class ParkModel extends Crud {
             return error('共查询' . $secondLength . '个车牌，未发现编辑距离大于' . $minMatchPercent . '的相似车牌');
         }
         asort($similarResult);
-        $similarResult = array_slice($similarResult, 0, 20);
+        $similarResult = array_slice($similarResult, 0, 30);
         // 相似度
         foreach ($similarResult as $k => $v) {
             similar_text($first, $k, $similarPercent);
@@ -955,6 +955,8 @@ class ParkModel extends Crud {
             $result = [
                 'car_type' => CarType::TEMP_CAR, 'car_path' => [], 'paths' => $this->pathModel->getTempCarPath()
             ];
+        } else {
+            $result['paths'] = $this->pathModel->getPathNodeById($result['paths']);
         }
 
         return $result;

@@ -97,7 +97,7 @@ class CarModel extends Crud {
         return [
             'car_type' => CarType::MEMBER_CAR,
             'car_path' => $carPaths,
-            'paths' => (new PathModel())->getPathNodeById(array_column($carPaths, 'path_id'))
+            'paths' => array_column($carPaths, 'path_id')
         ];
     }
 

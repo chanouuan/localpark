@@ -245,7 +245,7 @@ class MemberCar extends SuperCar
             'message'     => '一路顺风',
             'broadcast'   => '一路顺风',
             'pass_type'   => PassType::NORMAL_PASS,
-            'signal_type' => SignalType::PASS_SUCCESS,
+            'signal_type' => SignalType::PASS_SUCCESS
         ]);
     }
 
