@@ -400,7 +400,7 @@ class ParkModel extends Crud {
         }
 
         // 入场
-        $result = (new $className)->entry($nodeInfo, $paths, $carPaths['car_path']);
+        $result = (new $className)->entry($post, $nodeInfo, $paths, $carPaths['car_path']);
         // 入场错误
         if ($result['errorcode'] !== 0) {
             return $result;
@@ -596,7 +596,7 @@ class ParkModel extends Crud {
     protected function abnormalCarNumber (array $post, array $nodeInfo, $entryCarInfo = null)
     {
         // 异常车通行
-        $result = (new \app\pdo\AbnormalCar())->entry($nodeInfo, [], []);
+        $result = (new \app\pdo\AbnormalCar())->entry($post, $nodeInfo, [], []);
         if ($result['errorcode'] !== 0) {
             return $result;
         }

@@ -48,6 +48,18 @@ class CarType
         ]);
     }
 
+    /**
+     * 是否是有效期截止时间类型的会员车
+     * @param $code
+     * @return bool
+     */
+    public static function isTimeCar ($code)
+    {
+        return in_array($code, [
+            self::MONTH_CARD_CAR, self::VIP_CAR, self::FIXED_CAR
+        ]);
+    }
+
     public static function getMessage ($code)
     {
         return isset(self::$message[$code]) ? self::$message[$code] : '';

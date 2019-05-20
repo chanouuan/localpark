@@ -12,7 +12,7 @@ use app\common\PassType;
 class AbnormalCar extends SuperCar
 {
 
-    public function entry (array $node, array $paths, array $carPaths)
+    public function entry (array $post, array $node, array $paths, array $carPaths)
     {
         // 1 纠错失败
         // 2 路径错误

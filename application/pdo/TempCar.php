@@ -8,24 +8,30 @@ namespace app\pdo;
 use app\common\CarType;
 use app\common\SignalType;
 use app\common\PassType;
+use app\common\BroadcastType;
 
 class TempCar extends SuperCar
 {
 
-    public function entry (array $node, array $paths, array $carPaths)
+    public function entry (array $post, array $node, array $paths, array $carPaths)
     {
-        $carType = CarType::TEMP_CAR;
-
         // 临时车车位数限制
         if ($node['temp_car_count'] > 0 && $node['temp_car_left'] <= 0) {
-            $message = CarType::getMessage($carType) . '车位已满';
-            $broadcast = CarType::getMessage($carType) . '车位已满';
-            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
+            $broadcastType = BroadcastType::PLACE_LIMIT_ENTRY;
+            $signalType    = SignalType::CONFIRM_ABNORMAL_CANCEL;
         } else {
-            $message = '欢迎光临';
-            $broadcast = '欢迎光临';
-            $signalType = SignalType::PASS_SUCCESS;
+            $broadcastType = BroadcastType::CAR_ENTRY;
+            $signalType    = SignalType::PASS_SUCCESS;
         }
+
+        // 播报消息
+        $content = BroadcastType::getContent($broadcastType, [
+            'car_number' => $post['car_number'],
+            'car_type'   => CarType::getMessage(CarType::TEMP_CAR),
+            'rest'       => $node['temp_car_left']
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
 
         // 通行方式
         if ($signalType == SignalType::PASS_SUCCESS) {
@@ -35,7 +41,7 @@ class TempCar extends SuperCar
         }
 
         return success([
-            'car_type'    => $carType,
+            'car_type'    => CarType::TEMP_CAR,
             'message'     => $message,
             'broadcast'   => $broadcast,
             'signal_type' => $signalType,
@@ -69,20 +75,23 @@ class TempCar extends SuperCar
 
         // 通行方式
         if ($money === 0) {
-            $signalType = SignalType::PASS_SUCCESS;
-            $passType   = PassType::NORMAL_PASS;
+            $signalType    = SignalType::PASS_SUCCESS;
+            $passType      = PassType::NORMAL_PASS;
+            $broadcastType = BroadcastType::CAR_OUT;
         } else {
-            $signalType = SignalType::CONFIRM_NORMAL_CANCEL;
-            $passType   = PassType::WAIT_PASS;
+            $signalType    = SignalType::CONFIRM_NORMAL_CANCEL;
+            $passType      = PassType::WAIT_PASS;
+            $broadcastType = BroadcastType::CAR_PAY_OUT;
         }
 
-        if ($signalType == SignalType::PASS_SUCCESS) {
-            $message = '一路顺风';
-            $broadcast = '一路顺风';
-        } else {
-            $message = '请缴费' . round_dollar($money) . '元';
-            $broadcast = '请缴费' . round_dollar($money) . '元';
-        }
+        // 播报消息
+        $content = BroadcastType::getContent($broadcastType, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage(CarType::TEMP_CAR),
+            'money'      => $money
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
 
         return success([
             'car_type'    => CarType::TEMP_CAR,
@@ -98,19 +107,29 @@ class TempCar extends SuperCar
 
     public function mid (array $entry, array $node)
     {
-        $carType = CarType::TEMP_CAR;
-
         // 临时车车位数限制
         if ($node['temp_car_count'] > 0 && $node['temp_car_left'] <= 0) {
-            return error(CarType::getMessage($carType) . '车位已满');
+            $broadcastType = BroadcastType::PLACE_LIMIT_ENTRY;
+        } else {
+            $broadcastType = BroadcastType::CAR_ENTRY;
         }
 
-        // 消息
-        $message = '欢迎光临';
-        $broadcast = '欢迎光临';
+        // 播报消息
+        $content = BroadcastType::getContent($broadcastType, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage(CarType::TEMP_CAR),
+            'rest'       => $node['temp_car_left']
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
+        // 中场临时车直接返回错误信息
+        if ($broadcastType == BroadcastType::PLACE_LIMIT_ENTRY) {
+            return error($broadcast);
+        }
 
         return success([
-            'car_type'    => $carType,
+            'car_type'    => CarType::TEMP_CAR,
             'message'     => $message,
             'broadcast'   => $broadcast,
             'signal_type' => SignalType::PASS_SUCCESS,
@@ -120,10 +139,19 @@ class TempCar extends SuperCar
 
     public function normalPass (array $entry)
     {
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::CAR_OUT, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage(CarType::TEMP_CAR),
+            'money'      => $entry['money']
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
         return success([
             'car_type'    => CarType::TEMP_CAR,
-            'message'     => '一路顺风',
-            'broadcast'   => '一路顺风',
+            'message'     => $message,
+            'broadcast'   => $broadcast,
             'pass_type'   => PassType::NORMAL_PASS,
             'signal_type' => SignalType::PASS_SUCCESS
         ]);
@@ -131,10 +159,18 @@ class TempCar extends SuperCar
 
     public function revokePass (array $entry, $node_id)
     {
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::REVOKE_PASS, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage(CarType::TEMP_CAR)
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
         return success([
             'car_type'    => CarType::TEMP_CAR,
-            'message'     => '撤销放行',
-            'broadcast'   => '撤销放行',
+            'message'     => $message,
+            'broadcast'   => $broadcast,
             'pass_type'   => PassType::REVOKE_PASS,
             'signal_type' => SignalType::NONE
         ]);
