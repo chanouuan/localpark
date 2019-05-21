@@ -8,6 +8,8 @@ namespace app\pdo;
 use app\common\CarType;
 use app\common\SignalType;
 use app\common\PassType;
+use app\common\BroadcastType;
+use app\common\AbnormalCarPassWay;
 
 class AbnormalCar extends SuperCar
 {
@@ -21,27 +23,34 @@ class AbnormalCar extends SuperCar
             // 自动放行
             $money = 0;
             $signalType = SignalType::PASS_SUCCESS;
-            $message = '一路顺风';
-            $broadcast = '一路顺风';
+            $broadcastType = BroadcastType::CAR_OUT;
         } else if ($node['abnormal_car_pass_way'] == AbnormalCarPassWay::CHARGE) {
             // 异常收费
             $money = $node['abnormal_car_charge'];
             if ($money <= 0) {
                 $signalType = SignalType::PASS_SUCCESS;
+                $broadcastType = BroadcastType::CAR_OUT;
             } else {
                 $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
+                $broadcastType = BroadcastType::CAR_PAY_OUT;
             }
-            $message = '请缴费' . round_dollar($money) . '元';
-            $broadcast = '请缴费' . round_dollar($money) . '元';
         } else if ($node['abnormal_car_pass_way'] == AbnormalCarPassWay::MANUAL_PASS) {
             // 手动放行
             $money = 0;
             $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
-            $message = '异常车通行';
-            $broadcast = '异常车通行';
+            $broadcastType = BroadcastType::ABNORMAL_PASS;
         } else {
             return error(CarType::getMessage(CarType::ABNORMAL_CAR) . '不能通行');
         }
+
+        // 播报消息
+        $content = BroadcastType::getContent($broadcastType, [
+            'car_number' => $post['car_number'],
+            'car_type'   => CarType::getMessage(CarType::ABNORMAL_CAR),
+            'money'      => round_dollar($money)
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
 
         return success([
             'car_type'    => CarType::ABNORMAL_CAR,
@@ -53,7 +62,7 @@ class AbnormalCar extends SuperCar
         ]);
     }
 
-    public function abnormalPass ($node_id)
+    public function abnormalPass ($entry, $node_id)
     {
         $nodeModel = new \app\models\NodeModel();
         if (!$nodeInfo = $nodeModel->getNode($node_id)) {
@@ -64,10 +73,19 @@ class AbnormalCar extends SuperCar
             $money = $nodeInfo['abnormal_car_charge'] < 0 ? 0 : $nodeInfo['abnormal_car_charge'];
         }
 
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::CAR_OUT, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage(CarType::ABNORMAL_CAR),
+            'money'      => round_dollar($money)
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
         return success([
             'car_type'    => CarType::ABNORMAL_CAR,
-            'message'     => '一路顺风',
-            'broadcast'   => '一路顺风',
+            'message'     => $message,
+            'broadcast'   => $broadcast,
             'pass_type'   => PassType::ABNORMAL_PASS,
             'signal_type' => SignalType::PASS_SUCCESS,
             'money'       => $money
@@ -76,10 +94,18 @@ class AbnormalCar extends SuperCar
 
     public function revokePass (array $entry, $node_id)
     {
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::REVOKE_PASS, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage($entry['current_car_type'])
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
         return success([
             'car_type'    => CarType::ABNORMAL_CAR,
-            'message'     => '撤销放行',
-            'broadcast'   => '撤销放行',
+            'message'     => $message,
+            'broadcast'   => $broadcast,
             'pass_type'   => PassType::REVOKE_PASS,
             'signal_type' => SignalType::NONE
         ]);

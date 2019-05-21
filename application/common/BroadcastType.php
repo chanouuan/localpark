@@ -16,6 +16,7 @@ class BroadcastType
     const MEMBER_CAR_INVALID_OUT   = 7;
     const PLACE_LIMIT_ENTRY        = 8;
     const REVOKE_PASS              = 9;
+    const ABNORMAL_PASS            = 10;
 
     /**
      * 获取播报内容

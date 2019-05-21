@@ -39,21 +39,19 @@ class MemberCar extends SuperCar
             if (!isset($memberCarInfo)) {
                 continue;
             }
-            $carId      = $v['car_id'];
-            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
-            $carType    = $memberCarInfo['car_type'];
-            $carDays    = CarType::isTimeCar($carType) && $memberCarInfo['available'] ? round((strtotime($memberCarInfo['end_time']) - TIMESTAMP) / 86400) : 0;
+            $pathInfo = $paths[$v['path_id']];
             // 会员车是否失效
             if (!$memberCarInfo['available']) {
                 // 播报消息
                 $content = BroadcastType::getContent(BroadcastType::MEMBER_CAR_INVALID_ENTRY, [
                     'car_number' => $post['car_number'],
-                    'car_type'   => CarType::getMessage($carType)
+                    'car_type'   => CarType::getMessage($memberCarInfo['car_type'])
                 ]);
                 $message[]   = $content['display'];
                 $broadcast[] = $content['voice'];
                 // 失效会员车是否允许入场
-                if ($paths[$v['path_id']]['allow_invalid_car']) {
+                if ($pathInfo['allow_invalid_car']) {
+                    $carId      = $v['car_id'];
                     $signalType = SignalType::PASS_SUCCESS;
                     $carType    = CarType::INVALID_CAR; // 入场为过期车 注：会员车失效后是过期车，不会变成临时车
                 }
@@ -64,18 +62,19 @@ class MemberCar extends SuperCar
                     if ($v['place_left'] > 0) {
                         // 播报消息
                         $broadcastType = BroadcastType::CAR_ENTRY;
-                        if (CarType::isTimeCar($carType)) {
+                        if (CarType::isTimeCar($memberCarInfo['car_type'])) {
                             $broadcastType = BroadcastType::MEMBER_CAR_DAY_ENTRY;
                         }
                         $content = BroadcastType::getContent($broadcastType, [
                             'car_number' => $post['car_number'],
-                            'car_type'   => CarType::getMessage($carType),
-                            'day'        => $carDays
+                            'car_type'   => CarType::getMessage($memberCarInfo['car_type']),
+                            'day'        => CarType::isTimeCar($memberCarInfo['car_type']) && $memberCarInfo['available'] ? round((strtotime($memberCarInfo['end_time']) - TIMESTAMP) / 86400) : 0
                         ]);
                         $message    = [$content['display']];
                         $broadcast  = [$content['voice']];
                         $signalType = SignalType::PASS_SUCCESS;
                         $carType    = CarType::CHILD_CAR; // 入场为附属车
+                        $carId      = $v['car_id'];
                         break;
                     } else {
                         // 播报消息
@@ -87,14 +86,15 @@ class MemberCar extends SuperCar
                         $message[]   = $content['display'];
                         $broadcast[] = $content['voice'];
                         // 子母车位满后是否允许入场
-                        if ($paths[$v['path_id']]['allow_child_car']) {
+                        if ($pathInfo['allow_child_car']) {
                             $signalType = SignalType::PASS_SUCCESS;
                             $carType    = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
+                            $carId      = $v['car_id'];
                         }
                     }
                 } else {
                     $signalType = SignalType::PASS_SUCCESS;
-                    $carType = $memberCarInfo['car_type']; // 入场为会员车
+                    $carType    = $memberCarInfo['car_type']; // 入场为会员车
                     // 播报消息
                     $broadcastType = BroadcastType::CAR_ENTRY;
                     if (CarType::isTimeCar($carType)) {
@@ -103,16 +103,17 @@ class MemberCar extends SuperCar
                     $content = BroadcastType::getContent($broadcastType, [
                         'car_number' => $post['car_number'],
                         'car_type'   => CarType::getMessage($carType),
-                        'day'        => $carDays
+                        'day'        => CarType::isTimeCar($memberCarInfo['car_type']) && $memberCarInfo['available'] ? round((strtotime($memberCarInfo['end_time']) - TIMESTAMP) / 86400) : 0
                     ]);
-                    $message    = [$content['display']];
-                    $broadcast  = [$content['voice']];
+                    $message   = [$content['display']];
+                    $broadcast = [$content['voice']];
+                    $carId     = $v['car_id'];
                     break;
                 }
             }
         }
 
-        if (empty($carType)) {
+        if (empty($message)) {
             return error('此会员车不能入场');
         }
 
@@ -120,6 +121,7 @@ class MemberCar extends SuperCar
         if ($signalType == SignalType::PASS_SUCCESS) {
             $passType = PassType::NORMAL_PASS;
         } else {
+            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
             $passType = PassType::WAIT_PASS;
         }
 
@@ -191,17 +193,19 @@ class MemberCar extends SuperCar
             return error('结算金额异常');
         }
 
-        // 消息
-        $message = '请缴费' . round_dollar($money) . '元';
-        $broadcast = '请缴费' . round_dollar($money) . '元';
+        // 播报消息类型
+        if ($money === 0) {
+            $broadcastType = BroadcastType::CAR_OUT;
+        } else {
+            $broadcastType = BroadcastType::CAR_PAY_OUT;
+        }
 
-        // 储值卡车
         if ($carInfo['car_type'] == CarType::STORE_CARD_CAR) {
+            // 储值卡车
             if ($money > 0) {
                 if ($money > $carInfo['balance']) {
                     $money = $money - $carInfo['balance'];
-                    $message = '此卡余额不足,请缴费' . round_dollar($money) . '元';
-                    $broadcast = '此卡余额不足,请缴费' . round_dollar($money) . '元';
+                    $broadcastType = BroadcastType::STORE_CARD_CAR_OUT;
                 } else {
                     // 扣费
                     if (!$carModel->storeCardCarChangeBalance($carInfo['id'], $entry['car_number'], $money, $entry['id'])) {
@@ -209,7 +213,13 @@ class MemberCar extends SuperCar
                     }
                     // 已扣完费
                     $money = 0;
+                    $broadcastType = BroadcastType::CAR_OUT;
                 }
+            }
+        } else if (CarType::isTimeCar($carInfo['car_type'])) {
+            // 过期车
+            if ($money > 0) {
+                $broadcastType = BroadcastType::MEMBER_CAR_INVALID_OUT;
             }
         }
 
@@ -222,11 +232,14 @@ class MemberCar extends SuperCar
             $passType   = PassType::WAIT_PASS;
         }
 
-        // 消息
-        if ($signalType == SignalType::PASS_SUCCESS) {
-            $message = '一路顺风';
-            $broadcast = '一路顺风';
-        }
+        // 播报消息
+        $content = BroadcastType::getContent($broadcastType, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage($carType),
+            'money'      => round_dollar($money)
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
 
         return success([
             'car_type'    => $carType,
@@ -243,11 +256,15 @@ class MemberCar extends SuperCar
 
     public function mid (array $entry, array $node)
     {
-        // 消息
-        $message = '欢迎光临';
-        $broadcast = '欢迎光临';
-
         $carType = CarType::isMemberCar($entry['current_car_type']) ? $entry['current_car_type'] : CarType::MEMBER_CAR;
+
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::CAR_ENTRY, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage($carType)
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
 
         return success([
             'car_type'    => $carType,
@@ -274,9 +291,18 @@ class MemberCar extends SuperCar
             }
         }
 
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::CAR_OUT, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage($entry['current_car_type']),
+            'money'      => round_dollar($entry['money'])
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
         return success([
-            'message'     => '一路顺风',
-            'broadcast'   => '一路顺风',
+            'message'     => $message,
+            'broadcast'   => $broadcast,
             'pass_type'   => PassType::NORMAL_PASS,
             'signal_type' => SignalType::PASS_SUCCESS
         ]);
@@ -284,10 +310,18 @@ class MemberCar extends SuperCar
 
     public function revokePass (array $entry, $node_id)
     {
+        // 播报消息
+        $content = BroadcastType::getContent(BroadcastType::REVOKE_PASS, [
+            'car_number' => $entry['car_number'],
+            'car_type'   => CarType::getMessage($entry['current_car_type'])
+        ]);
+        $message   = $content['display'];
+        $broadcast = $content['voice'];
+
         return success([
             'car_type'    => CarType::MEMBER_CAR,
-            'message'     => '撤销放行',
-            'broadcast'   => '撤销放行',
+            'message'     => $message,
+            'broadcast'   => $broadcast,
             'pass_type'   => PassType::REVOKE_PASS,
             'signal_type' => SignalType::NONE
         ]);

@@ -280,7 +280,7 @@ class ParkModel extends Crud {
             return error('此车不是异常车');
         }
 
-        $result = (new \app\pdo\AbnormalCar())->abnormalPass($post['node_id']);
+        $result = (new \app\pdo\AbnormalCar())->abnormalPass($entryCarInfo, $post['node_id']);
         if ($result['errorcode'] !== 0) {
             return $result;
         }

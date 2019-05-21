@@ -56,10 +56,11 @@ abstract class SuperCar
 
     /**
      * 异常放行
+     * @param array $entry 入场信息
      * @param $node_id 节点ID
      * @return array
      */
-    public function abnormalPass ($node_id)
+    public function abnormalPass (array $entry, $node_id)
     {
         return error('不能异常放行');
     }

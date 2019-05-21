@@ -88,7 +88,7 @@ class TempCar extends SuperCar
         $content = BroadcastType::getContent($broadcastType, [
             'car_number' => $entry['car_number'],
             'car_type'   => CarType::getMessage(CarType::TEMP_CAR),
-            'money'      => $money
+            'money'      => round_dollar($money)
         ]);
         $message   = $content['display'];
         $broadcast = $content['voice'];
@@ -143,7 +143,7 @@ class TempCar extends SuperCar
         $content = BroadcastType::getContent(BroadcastType::CAR_OUT, [
             'car_number' => $entry['car_number'],
             'car_type'   => CarType::getMessage(CarType::TEMP_CAR),
-            'money'      => $entry['money']
+            'money'      => round_dollar($entry['money'])
         ]);
         $message   = $content['display'];
         $broadcast = $content['voice'];
