@@ -149,4 +149,45 @@ class CarModel extends Crud {
         return $list;
     }
 
+    /**
+     * 获取车辆动态参数
+     * @param $car_number
+     * @return array
+     */
+    public function getCarParameter ($car_number)
+    {
+        if (!$info = $this->getDb()->table('chemi_car_parameter')->field('parameter')->where(['car_number' => $car_number])->limit(1)->find()) {
+            return [];
+        }
+        return $info['parameter'] ? json_decode($info['parameter'], true) : [];
+    }
+
+
+    /**
+     * 保存车辆动态参数
+     * @param $car_number
+     * @param $data
+     * @return bool
+     */
+    public function saveCarParameter ($car_number, array $data)
+    {
+        if (empty($data)) {
+            return true;
+        }
+        if (!$info = $this->getDb()->table('chemi_car_parameter')->field('id,parameter')->where(['car_number' => $car_number])->limit(1)->find()) {
+            return $this->getDb()->insert('chemi_car_parameter', [
+                'car_number' => $car_number,
+                'parameter' => json_encode($data),
+                'update_time' => date('Y-m-d H:i:s', TIMESTAMP),
+                'create_time' => date('Y-m-d H:i:s', TIMESTAMP)
+            ]);
+        }
+        $info['parameter'] ? json_decode($info['parameter'], true) : [];
+        $info['parameter'] = array_merge($info['parameter'], $data);
+        return $this->getDb()->update('chemi_car_parameter', [
+            'parameter' => json_encode($info['parameter']),
+            'update_time' => date('Y-m-d H:i:s', TIMESTAMP)
+        ], ['id' => $info['id']]);
+    }
+
 }

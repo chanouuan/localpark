@@ -88,19 +88,25 @@ abstract class SuperCar
             return false;
         }
         extract($parameter);
-        $cost = @eval($code);
-        if (null === $cost || false === $cost) {
+        $data = @eval($code);
+        if (null === $data || false === $data) {
             return false;
         }
         foreach ($parameter as $k => $v) {
             $code = str_replace(['${"' . $k . '"}', '${\'' . $k . '\'}', '$' . $k], '{' . $v . '}', $code);
         }
         unset($parameter);
-        $cost = intval($cost);
-        $cost = $cost < 0 ? 0 : $cost;
-        return [
-            'cost' => $cost, 'code' => $code
+        $result = [
+            'code' => $code
         ];
+        if (is_array($data)) {
+            $result = array_merge($data, $result);
+        } else {
+            $result['cost'] = intval($data);
+        }
+        unset($data);
+        $result['cost'] = $result['cost'] < 0 ? 0 : $result['cost'];
+        return $result;
     }
 
 }

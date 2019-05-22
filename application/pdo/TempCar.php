@@ -54,6 +54,7 @@ class TempCar extends SuperCar
         $pathId = null;
         $money  = null;
         $code   = null;
+        $logic  = null;
         // 查找最便宜的一条路
         foreach ($paths as $k => $v) {
             if (false !== ($load = $this->calculationCode($parameter, $v['calculation_code']))) {
@@ -61,6 +62,7 @@ class TempCar extends SuperCar
                     $pathId = $v['path_id'];
                     $money  = $load['cost'];
                     $code   = $load['code'];
+                    $logic  = array_key_clean($load, ['cost', 'code']);
                     if ($money === 0) {
                         break;
                     }
@@ -101,7 +103,8 @@ class TempCar extends SuperCar
             'pass_type'   => $passType,
             'money'       => $money,
             'code'        => $code,
-            'path_id'     => $pathId
+            'path_id'     => $pathId,
+            'logic'       => $logic
         ]);
     }
 

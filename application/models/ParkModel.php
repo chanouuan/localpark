@@ -501,13 +501,10 @@ class ParkModel extends Crud {
         $nodes = $this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $carPaths['car_type']);
         $parameter = [
             '当前时间' => TIMESTAMP,
-            '上次入场时间' => strtotime($entryCarInfo['update_time']),
-            '上次出场时间' => 0
+            '上次入场时间' => strtotime($entryCarInfo['update_time'])
         ];
-        if ($carPaths['car_type'] == CarType::MEMBER_CAR) {
-            // 会员车
-            $parameter['上次出场时间'] = $this->outModel->getLastOutParkTime($post['car_number']);
-        }
+        // 动态参数加载
+        $parameter = array_merge($parameter, $this->carModel->getCarParameter($post['car_number']));
         foreach ($nodes as $k => $v) {
             $parameter['节点' . ($k + 1) . 'ID'] = $v['node_id'];
             $parameter['节点' . ($k + 1) . '入场时间'] = strtotime($v['time']);
@@ -532,6 +529,11 @@ class ParkModel extends Crud {
             return $result;
         }
         $result = $result['result'];
+
+        // 保存动态参数
+        if (!$this->carModel->saveCarParameter($post['car_number'], $result['logic'])) {
+            return error('保存动态参数错误,请重试');
+        }
 
         // 保存在场信息
         if (!$this->entryModel->saveEntryInfo($entryCarInfo, [

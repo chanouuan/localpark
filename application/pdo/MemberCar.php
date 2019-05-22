@@ -154,6 +154,7 @@ class MemberCar extends SuperCar
         $pathId  = null;
         $money   = null;
         $code    = null;
+        $logic   = null;
         $carInfo = null;
         $carType = null;
         // 查找最便宜的一条路
@@ -179,6 +180,7 @@ class MemberCar extends SuperCar
                     $pathId  = $v['path_id'];
                     $money   = $load['cost'];
                     $code    = $load['code'];
+                    $logic   = array_key_clean($load, ['cost', 'code']);
                     $carInfo = $memberCarInfo;
                     $carType = $memberCarType;
                     if ($money === 0) {
@@ -250,7 +252,8 @@ class MemberCar extends SuperCar
             'pass_type'   => $passType,
             'money'       => $money,
             'code'        => $code,
-            'path_id'     => $pathId
+            'path_id'     => $pathId,
+            'logic'       => $logic
         ]);
     }
 
