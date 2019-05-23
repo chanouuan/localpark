@@ -41,11 +41,11 @@ class CarModel extends Crud {
         }
         // 记录变动
         return $this->saveCarTrade([
-            'title' => '储值卡车扣费',
-            'car_id' => $car_id,
+            'title'      => '储值卡车扣费',
+            'car_id'     => $car_id,
             'car_number' => $car_number,
-            'pass_id' => $pass_id,
-            'money' => $cost
+            'pass_id'    => $pass_id,
+            'money'      => $cost
         ]);
     }
 
@@ -72,7 +72,7 @@ class CarModel extends Crud {
             ->table('chemi_car_child child inner join chemi_car_path path on path.id = child.car_path_id')
             ->field('path.id,path.car_id,path.path_id,path.car_number,path.place_count,path.place_left')
             ->where([
-                'path.status' => 1,
+                'path.status'      => 1,
                 'child.car_number' => $car_number
             ])
             ->select();
@@ -97,7 +97,7 @@ class CarModel extends Crud {
         return [
             'car_type' => CarType::MEMBER_CAR,
             'car_path' => $carPaths,
-            'paths' => array_column($carPaths, 'path_id')
+            'paths'    => array_column($carPaths, 'path_id')
         ];
     }
 
@@ -176,16 +176,16 @@ class CarModel extends Crud {
         }
         if (!$info = $this->getDb()->table('chemi_car_parameter')->field('id,parameter')->where(['car_number' => $car_number])->limit(1)->find()) {
             return $this->getDb()->insert('chemi_car_parameter', [
-                'car_number' => $car_number,
-                'parameter' => json_encode($data),
+                'car_number'  => $car_number,
+                'parameter'   => json_encode($data),
                 'update_time' => date('Y-m-d H:i:s', TIMESTAMP),
                 'create_time' => date('Y-m-d H:i:s', TIMESTAMP)
             ]);
         }
-        $info['parameter'] ? json_decode($info['parameter'], true) : [];
+        $info['parameter'] = $info['parameter'] ? json_decode($info['parameter'], true) : [];
         $info['parameter'] = array_merge($info['parameter'], $data);
         return $this->getDb()->update('chemi_car_parameter', [
-            'parameter' => json_encode($info['parameter']),
+            'parameter'   => json_encode($info['parameter']),
             'update_time' => date('Y-m-d H:i:s', TIMESTAMP)
         ], ['id' => $info['id']]);
     }
