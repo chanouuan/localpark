@@ -27,6 +27,17 @@ class ParkModel extends Crud {
     }
 
     /**
+     * 值班员登录
+     * @param username 用户名
+     * @param password 密码
+     * @return array
+     */
+    public function ondutyLogin (array $post)
+    {
+        return (new AdminModel())->login($post);
+    }
+
+    /**
      * 车辆进出场
      * @param onduty_id 值班员
      * @param node_id 进出场节点
@@ -87,7 +98,7 @@ class ParkModel extends Crud {
                 $post = array_merge($post, $correctionResult['result']);
                 if ($correctionResult['errorcode'] !== 0) {
                     // 异常车
-                    return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
+                    return $this->abnormalCarNumber($post, $nodeInfo);
                 }
                 return $this->pass($post);
             } else {
@@ -106,7 +117,7 @@ class ParkModel extends Crud {
         if ($entryCarInfo['pass_type'] == PassType::ABNORMAL_PASS) {
             // 只要不是起点，都按异常车通行，因为起点会自动将入场异常车移到出入场记录表
             if (empty($startPaths) || ($endPaths && $startPaths)) {
-                return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
+                return $this->abnormalCarNumber($post, $nodeInfo);
             }
         }
 
@@ -127,7 +138,7 @@ class ParkModel extends Crud {
                 $post = array_merge($post, $correctionResult['result']);
                 if ($correctionResult['errorcode'] !== 0) {
                     // 异常车
-                    return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
+                    return $this->abnormalCarNumber($post, $nodeInfo);
                 }
                 return $this->pass($post);
             }
@@ -159,7 +170,7 @@ class ParkModel extends Crud {
             $post = array_merge($post, $correctionResult['result']);
             if ($correctionResult['errorcode'] !== 0) {
                 // 异常车
-                return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
+                return $this->abnormalCarNumber($post, $nodeInfo);
             }
             return $this->pass($post);
         }
@@ -173,7 +184,7 @@ class ParkModel extends Crud {
             $post = array_merge($post, $correctionResult['result']);
             if ($correctionResult['errorcode'] !== 0) {
                 // 异常车
-                return $this->abnormalCarNumber($post, $nodeInfo, $entryCarInfo);
+                return $this->abnormalCarNumber($post, $nodeInfo);
             }
             return $this->pass($post);
         }
@@ -290,9 +301,9 @@ class ParkModel extends Crud {
         if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
             'current_car_type' => $result['car_type'],
             'money'            => ['money+' . ($entryCarInfo['current_node_id'] == $post['node_id'] ? 0 : $result['money'])],
-            'real_money'       => ['money+' . ($entryCarInfo['current_node_id'] == $post['node_id'] ? 0 : $result['money'])],
+            'real_money'       => ['money'],
             'current_node_id'  => $post['node_id'],
-            'last_nodes'       => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $result['car_type'])),
+            'last_nodes'       => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $result['car_type'], $result['money'])),
             'pass_type'        => $result['pass_type'],
             'onduty_id'        => $post['onduty_id'],
             'broadcast'        => $result['broadcast'],
@@ -345,7 +356,6 @@ class ParkModel extends Crud {
 
         // 回退在场信息
         $params = [
-            'real_money'  => 0,
             'onduty_id'   => $post['onduty_id'],
             'pass_type'   => $result['pass_type'],
             'broadcast'   => $result['broadcast'],
@@ -363,8 +373,10 @@ class ParkModel extends Crud {
                 // 返回信号
                 return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signal_type'], []);
             }
-            array_pop($lastNodes);
-            $endNode = end($lastNodes);
+            $lastNode = array_pop($lastNodes);
+            $endNode  = end($lastNodes);
+            $params['money']            = isset($lastNode['money']) ? ['money-' . $lastNode['money']] : 0;
+            $params['real_money']       = ['money'];
             $params['last_nodes']       = json_encode($lastNodes);
             $params['current_car_type'] = $endNode['car_type'];
             $params['current_node_id']  = $endNode['node_id'];
@@ -542,7 +554,7 @@ class ParkModel extends Crud {
             'paths'             => json_encode([$result['path_id']]),
             'money'             => $result['money'],
             'current_node_id'   => $post['node_id'],
-            'last_nodes'        => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $result['car_type'])),
+            'last_nodes'        => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $result['car_type'], $result['money'])),
             'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
             'pass_type'         => $result['pass_type'],
             'onduty_id'         => $post['onduty_id'],
@@ -592,11 +604,16 @@ class ParkModel extends Crud {
      * 异常车通行
      * @param $post
      * @param $nodeInfo 节点信息
-     * @param $entryCarInfo 入场信息
      * @return array
      */
-    protected function abnormalCarNumber (array $post, array $nodeInfo, $entryCarInfo = null)
+    protected function abnormalCarNumber (array $post, array $nodeInfo)
     {
+        // 异常车用原车牌
+        $post['car_number'] = $post['original_car_number'] ? $post['original_car_number'] : $post['car_number'];
+
+        // 查询在场信息
+        $entryCarInfo = $this->entryModel->getCarInfo($post['car_number']);
+
         // 异常车通行
         $result = (new \app\pdo\AbnormalCar())->entry($post, $nodeInfo, [], []);
         if ($result['errorcode'] !== 0) {
@@ -611,9 +628,8 @@ class ParkModel extends Crud {
                 // 起竿放行信号，才追加入场信息，是为了防止车辆驶错通道，造成路径错误问题
                 if (!$this->entryModel->saveEntryInfo($entryCarInfo, [
                     'current_car_type'  => $result['car_type'],
-                    'money'             => ['money+' . $result['money']],
                     'current_node_id'   => $post['node_id'],
-                    'last_nodes'        => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $result['car_type'])),
+                    'last_nodes'        => json_encode($this->entryModel->connectNode($entryCarInfo['last_nodes'], $post['node_id'], $result['car_type'], $result['money'])),
                     'correction_record' => ['JSON_ARRAY_APPEND(correction_record,"$",' . $post['correction_record_id'] . ')'],
                     'pass_type'         => $result['pass_type'],
                     'onduty_id'         => $post['onduty_id'],
@@ -628,11 +644,11 @@ class ParkModel extends Crud {
             if (!$id = $this->entryModel->addEntryInfo([
                 'car_type'            => $result['car_type'],
                 'current_car_type'    => $result['car_type'],
-                'original_car_number' => $post['original_car_number'],
                 'car_number'          => $post['car_number'],
                 'money'               => $result['money'],
+                'real_money'          => $result['money'],
                 'current_node_id'     => $post['node_id'],
-                'last_nodes'          => json_encode($this->entryModel->connectNode([], $post['node_id'], $result['car_type'])),
+                'last_nodes'          => json_encode($this->entryModel->connectNode([], $post['node_id'], $result['car_type'], $result['money'])),
                 'correction_record'   => json_encode([$post['correction_record_id']]),
                 'pass_type'           => $result['pass_type'],
                 'onduty_id'           => $post['onduty_id'],
@@ -775,7 +791,7 @@ class ParkModel extends Crud {
                         ], ['id' => $correctionRecordId]);
                     }
                     return success([
-                        'original_car_number' => $original_car_number,
+                        'original_car_number' => null,
                         'car_number' => $original_car_number, // 换成原车牌
                         'error_count' => $errorCount,
                         'error_scene' => $errorScene,

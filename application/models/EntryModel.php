@@ -2,6 +2,7 @@
 
 namespace app\models;
 
+use app\common\PassType;
 use Crud;
 use app\common\CarType;
 use app\common\DotType;
@@ -55,11 +56,9 @@ class EntryModel extends Crud {
         }
         if ($data['car_type'] == CarType::MEMBER_CAR) {
             // 会员车车位数-1
-            if ($data['current_car_type'] == CarType::CHILD_CAR) {
-                $this->getDb()->update('chemi_car_path', [
-                    'place_left' => ['place_left-1']
-                ], 'place_left > 0 and JSON_CONTAINS(car_number,\'"' . $data['car_number'] . '"\')');
-            }
+            $this->getDb()->update('chemi_car_path', [
+                'place_left' => ['place_left-1']
+            ], 'place_left > 0 and JSON_CONTAINS(car_number,\'"' . $data['car_number'] . '"\')');
         }
         return $id;
 
@@ -80,8 +79,42 @@ class EntryModel extends Crud {
         ])) {
             return false;
         }
+        // 撤销通行
+        if ($data['pass_type'] == PassType::REVOKE_PASS) {
+            if ($entryInfo['current_node_id'] && $data['current_node_id'] && $entryInfo['current_node_id'] != $data['current_node_id']) {
+                // 更新车位数
+                if ($entryInfo['current_car_type'] == CarType::TEMP_CAR) {
+                    // 不是终点
+                    if (!DotType::isEndDot($entryInfo['dot'])) {
+                        // 临时车车位数+1
+                        $this->getDb()->update('chemi_node', [
+                            'temp_car_left' => ['temp_car_left+1']
+                        ], [
+                            'id' => $entryInfo['current_node_id'], 'temp_car_count' => ['>temp_car_left']
+                        ]);
+                    }
+                }
+                if ($data['current_car_type'] == CarType::TEMP_CAR) {
+                    // 临时车车位数-1
+                    $this->getDb()->update('chemi_node', [
+                        'temp_car_left' => ['temp_car_left-1']
+                    ], [
+                        'id' => $data['current_node_id'], 'temp_car_count' => ['>', 0], 'temp_car_left' => ['>', 0]
+                    ]);
+                }
+                if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
+                    // 会员车车位数-1
+                    if (DotType::isEndDot($entryInfo['dot'])) {
+                        $this->getDb()->update('chemi_car_path', [
+                            'place_left' => ['place_left-1']
+                        ], 'place_left > 0 and JSON_CONTAINS(car_number,\'"' . $entryInfo['car_number'] . '"\')');
+                    }
+                }
+            }
+            return true;
+        }
         // 不是重复提交
-        if ($entryInfo['current_node_id'] != $data['current_node_id']) {
+        if ($entryInfo['current_node_id'] && $data['current_node_id'] && $entryInfo['current_node_id'] != $data['current_node_id']) {
             // 更新车位数
             if ($entryInfo['current_car_type'] == CarType::TEMP_CAR) {
                 // 临时车车位数+1
@@ -105,11 +138,9 @@ class EntryModel extends Crud {
             if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
                 // 会员车车位数+1
                 if (DotType::isEndDot($data['dot'])) {
-                    if ($entryInfo['last_nodes'][0]['car_type'] == CarType::CHILD_CAR) {
-                        $this->getDb()->update('chemi_car_path', [
-                            'place_left' => ['place_left+1']
-                        ], 'place_count > place_left and JSON_CONTAINS(car_number,\'"' . $entryInfo['car_number'] . '"\')');
-                    }
+                    $this->getDb()->update('chemi_car_path', [
+                        'place_left' => ['place_left+1']
+                    ], 'place_count > place_left and JSON_CONTAINS(car_number,\'"' . $entryInfo['car_number'] . '"\')');
                 }
             }
         }
@@ -147,20 +178,25 @@ class EntryModel extends Crud {
      * @param $last 上节点
      * @param $node_id 当前节点
      * @param $car_type 当前车辆类型
+     * @param $money 金额
      * @return string
      */
-    public function connectNode (array $last, $node_id, $car_type)
+    public function connectNode (array $last, $node_id, $car_type = 0, $money = 0)
     {
         $nodeSize = count($last);
         if ($nodeSize > 0) {
             if ($last[$nodeSize - 1]['node_id'] == $node_id) {
                 $last[$nodeSize - 1]['car_type'] = $car_type;
-                $last[$nodeSize - 1]['time'] = date('Y-m-d H:i:s', TIMESTAMP);
+                $last[$nodeSize - 1]['money']    = $money;
+                $last[$nodeSize - 1]['time']     = date('Y-m-d H:i:s', TIMESTAMP);
                 return $last;
             }
         }
         $last[] = [
-            'node_id' => $node_id, 'car_type' => $car_type, 'time' => date('Y-m-d H:i:s', TIMESTAMP)
+            'node_id'  => $node_id,
+            'car_type' => $car_type,
+            'money'    => $money,
+            'time'     => date('Y-m-d H:i:s', TIMESTAMP)
         ];
         return $last;
     }

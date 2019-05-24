@@ -29,6 +29,9 @@ class Park extends ActionPDO {
             'revokePass' => [
                 'url' => getgpc('node_id'),
                 'interval' => 1000
+            ],
+            'ondutyLogin' => [
+                'interval' => 1000
             ]
         ];
     }
@@ -128,6 +131,27 @@ class Park extends ActionPDO {
         return (new ParkModel())->revokePass([
             'id' => $_POST['id'], 'node_id' => $_POST['node_id'], 'onduty_id' => $this->_G['user']['uid']
         ]);
+    }
+
+    /**
+     * 值班员登录
+     * @param *username 用户名
+     * @param *password 密码
+     * @return array
+     * {
+     * "errNo":0, // 错误码 0成功 -1失败
+     * "message":"", // 返回信息
+     * "result":{
+     *     "uid":1, //用户ID
+     *     "telephone":"", //手机号
+     *     "nickname":"", //昵称
+     *     "gender":1, //性别 0未知 1男 2女
+     *     "token":"", //登录凭证
+     * }}
+     */
+    public function ondutyLogin ()
+    {
+        return (new ParkModel())->ondutyLogin($_POST);
     }
 
 }
