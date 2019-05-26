@@ -15,19 +15,19 @@ class Park extends ActionPDO {
     {
         return [
             'pass' => [
-                'url' => getgpc('node_id'),
+                'url'      => getgpc('node_id'),
                 'interval' => 1000
             ],
             'normalPass' => [
-                'url' => getgpc('node_id'),
+                'url'      => getgpc('node_id'),
                 'interval' => 1000
             ],
             'abnormalPass' => [
-                'url' => getgpc('node_id'),
+                'url'      => getgpc('node_id'),
                 'interval' => 1000
             ],
             'revokePass' => [
-                'url' => getgpc('node_id'),
+                'url'      => getgpc('node_id'),
                 'interval' => 1000
             ],
             'ondutyLogin' => [
@@ -57,7 +57,10 @@ class Park extends ActionPDO {
     public function pass ()
     {
         return (new ParkModel())->pass([
-            'node_id' => $_POST['node_id'], 'car_number' => $_POST['car_number'], 'error_count' => $_POST['error_count'], 'onduty_id' => $this->_G['user']['uid']
+            'node_id'     => $_POST['node_id'],
+            'car_number'  => $_POST['car_number'],
+            'error_count' => $_POST['error_count'],
+            'onduty_id'   => $this->_G['user']['uid']
         ]);
     }
 
@@ -66,6 +69,7 @@ class Park extends ActionPDO {
      * @login
      * @param *id 流水号
      * @param *node_id 通道ID
+     * @param *pay_type 支付方式(1现金2微信3支付宝)
      * @return array
      * {
      * "errNo":0, // 错误码 0成功 -1失败
@@ -81,7 +85,10 @@ class Park extends ActionPDO {
     public function normalPass ()
     {
         return (new ParkModel())->normalPass([
-            'id' => $_POST['id'], 'node_id' => $_POST['node_id'], 'onduty_id' => $this->_G['user']['uid']
+            'id'        => $_POST['id'],
+            'node_id'   => $_POST['node_id'],
+            'pay_type'  => $_POST['pay_type'],
+            'onduty_id' => $this->_G['user']['uid']
         ]);
     }
 
@@ -90,6 +97,7 @@ class Park extends ActionPDO {
      * @login
      * @param *id 流水号
      * @param *node_id 通道ID
+     * @param *pay_type 支付方式(1现金2微信3支付宝)
      * @return array
      * {
      * "errNo":0, // 错误码 0成功 -1失败
@@ -105,7 +113,10 @@ class Park extends ActionPDO {
     public function abnormalPass ()
     {
         return (new ParkModel())->abnormalPass([
-            'id' => $_POST['id'], 'node_id' => $_POST['node_id'], 'onduty_id' => $this->_G['user']['uid']
+            'id'        => $_POST['id'],
+            'node_id'   => $_POST['node_id'],
+            'pay_type'  => $_POST['pay_type'],
+            'onduty_id' => $this->_G['user']['uid']
         ]);
     }
 
@@ -129,12 +140,15 @@ class Park extends ActionPDO {
     public function revokePass ()
     {
         return (new ParkModel())->revokePass([
-            'id' => $_POST['id'], 'node_id' => $_POST['node_id'], 'onduty_id' => $this->_G['user']['uid']
+            'id'        => $_POST['id'],
+            'node_id'   => $_POST['node_id'],
+            'onduty_id' => $this->_G['user']['uid']
         ]);
     }
 
     /**
      * 值班员登录
+     * @param token 登录Token,用于值班员交接班
      * @param *username 用户名
      * @param *password 密码
      * @return array
@@ -151,7 +165,30 @@ class Park extends ActionPDO {
      */
     public function ondutyLogin ()
     {
+        if ($_POST['token']) {
+            if ($userInfo = $this->loginCheck($_POST['token'])) {
+                $_POST['original_onduty_id'] = $userInfo['uid'];
+            }
+        }
         return (new ParkModel())->ondutyLogin($_POST);
+    }
+
+    /**
+     * 获取值班员收银账目
+     * @login
+     * @return array
+     * {
+     * "errNo":0, // 错误码 0成功 -1失败
+     * "message":"", // 返回信息
+     * "result":{
+     *     "money":0, //已收款 (元)
+     *     "detail":{}, //费用明细
+     *     "create_time":"", //值班开始时间
+     * }}
+     */
+    public function getOndutyCash ()
+    {
+        return (new ParkModel())->getOndutyCash($this->_G['user']['uid']);
     }
 
 }

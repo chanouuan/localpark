@@ -7,6 +7,7 @@ use app\common\CarType;
 use app\common\PassType;
 use app\common\SignalType;
 use app\common\DotType;
+use app\common\PayType;
 
 class ParkModel extends Crud {
 
@@ -28,20 +29,38 @@ class ParkModel extends Crud {
 
     /**
      * 值班员登录
-     * @param username 用户名
-     * @param password 密码
+     * @param $username 用户名
+     * @param $password 密码
      * @return array
      */
     public function ondutyLogin (array $post)
     {
-        return (new AdminModel())->login($post);
+        $post['original_onduty_id'] = intval($post['original_onduty_id']);
+
+        $result = (new AdminModel())->login($post);
+        if ($result['errorcode'] === 0) {
+            // 值班员交接班
+            (new OndutyModel())->change($post['original_onduty_id'], $result['result']['uid']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 获取值班员收银账目
+     * @param $onduty_id 值班员ID
+     * @return array
+     */
+    public function getOndutyCash ($onduty_id)
+    {
+        return (new OndutyModel())->getOndutyCash($onduty_id);
     }
 
     /**
      * 车辆进出场
-     * @param onduty_id 值班员
-     * @param node_id 进出场节点
-     * @param car_number 车牌号
+     * @param $onduty_id 值班员
+     * @param $node_id 进出场节点
+     * @param $car_number 车牌号
      * @return array
      */
     public function pass (array $post)
@@ -198,6 +217,7 @@ class ParkModel extends Crud {
      * @param id 流水号
      * @param onduty_id 值班员
      * @param node_id 出场节点
+     * @param pay_type 支付方式
      * @return array
      */
     public function normalPass ($post)
@@ -208,6 +228,8 @@ class ParkModel extends Crud {
         $post['onduty_id'] = intval($post['onduty_id']);
         // 节点
         $post['node_id']   = intval($post['node_id']);
+        // 支付方式
+        $post['pay_type']  = intval($post['pay_type']);
 
         // 查询在场车辆
         if (!$entryCarInfo = $this->entryModel->getCarInfo($post['id'])) {
@@ -245,6 +267,7 @@ class ParkModel extends Crud {
             'broadcast'   => $result['broadcast'],
             'signal_type' => $result['signal_type'],
             'real_money'  => ['money'],
+            'pay_type'    => PayType::getCode($post['pay_type']),
             'update_time' => $entryCarInfo['update_time'] // 注意这里意为不更新此值
         ])) {
             return error('正常放行失败,请重试');
@@ -280,6 +303,8 @@ class ParkModel extends Crud {
         $post['onduty_id'] = intval($post['onduty_id']);
         // 节点
         $post['node_id']   = intval($post['node_id']);
+        // 支付方式
+        $post['pay_type']  = intval($post['pay_type']);
 
         // 查询在场车辆
         if (!$entryCarInfo = $this->entryModel->getCarInfo($post['id'])) {
@@ -307,7 +332,8 @@ class ParkModel extends Crud {
             'pass_type'        => $result['pass_type'],
             'onduty_id'        => $post['onduty_id'],
             'broadcast'        => $result['broadcast'],
-            'signal_type'      => $result['signal_type']
+            'signal_type'      => $result['signal_type'],
+            'pay_type'         => PayType::getCode($post['pay_type'])
         ])) {
             return error('异常放行失败,请重试');
         }

@@ -45,6 +45,10 @@ class EntryModel extends Crud {
         if (!$id = $this->getDb()->insert($this->table, $data, null, false, true)) {
             return false;
         }
+        // 值班员缴费
+        if ($data['onduty_id'] && $data['real_money']) {
+            (new OndutyModel())->charge($data['onduty_id']);
+        }
         // 更新车位数
         if ($data['car_type'] == CarType::TEMP_CAR) {
             // 临时车车位数-1
@@ -61,7 +65,6 @@ class EntryModel extends Crud {
             ], 'place_left > 0 and JSON_CONTAINS(car_number,\'"' . $data['car_number'] . '"\')');
         }
         return $id;
-
     }
 
     /**
@@ -78,6 +81,10 @@ class EntryModel extends Crud {
             'id' => $entryInfo['id'], 'version_count' => $entryInfo['version_count']
         ])) {
             return false;
+        }
+        // 值班员缴费
+        if ($data['onduty_id'] && $data['real_money']) {
+            (new OndutyModel())->charge($data['onduty_id']);
         }
         // 撤销通行
         if ($data['pass_type'] == PassType::REVOKE_PASS) {
@@ -257,17 +264,17 @@ class EntryModel extends Crud {
         foreach ($passNodes as $k => $v) {
             $updateTime = date('Y-m-d H:i:s', $entryCarInfo['update_time'] + ($diffTime * ($k + 1)));
             $entryCarInfo['last_nodes'][] = [
-                'node_id' => $v,
+                'node_id'  => $v,
                 'car_type' => $entryCarInfo['current_car_type'],
-                'time' => $updateTime,
-                'auto' => 1
+                'time'     => $updateTime,
+                'auto'     => 1
             ];
         }
         $param = [
             'paths' => json_encode([$pathId]),
             'current_node_id' => end($passNodes),
-            'last_nodes' => json_encode($entryCarInfo['last_nodes']),
-            'update_time' => $updateTime
+            'last_nodes'      => json_encode($entryCarInfo['last_nodes']),
+            'update_time'     => $updateTime
         ];
         if (!$this->saveEntryInfo($entryCarInfo, $param)) {
             return false;
