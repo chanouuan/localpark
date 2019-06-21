@@ -248,7 +248,7 @@ abstract class ActionPDO {
                 array_splice($paramList, 0, 0, '*token string 登录Token');
             }
             foreach ($paramList as $kk => $vv) {
-                $vv = array_slice(array_filter(explode(' ', trim($vv))), 0, 3);
+                $vv = array_filter(explode(' ', trim($vv) , 3));
                 if (count($vv) == 2) {
                     array_splice($vv, 1, 0, 'string');
                 }
@@ -668,6 +668,9 @@ class DebugLog {
         $destination = concat(APPLICATION_PATH, DIRECTORY_SEPARATOR, 'log', DIRECTORY_SEPARATOR, str_replace('_', DIRECTORY_SEPARATOR, date($rule, TIMESTAMP)), '_', $logfile, '.log');
         mkdirm(dirname($destination));
         error_log(implode("\r\n", $message) . "\r\n\r\n", 3, $destination);
+        if (filesize($destination) > 20971520) {
+            rename($destination, str_replace('.log', '_' . date('His', TIMESTAMP) . '.log', $destination));
+        }
     }
 
     /**
