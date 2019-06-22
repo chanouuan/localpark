@@ -72,7 +72,7 @@ class AdminModel extends Crud {
         }
 
         // 密码验证
-        if ($userModel->passwordVerify($post['password'], $userInfo['password'])) {
+        if (!$userModel->passwordVerify($post['password'], $userInfo['password'])) {
             $count = $this->loginFail($post['username']);
             return error($count > 0 ? ('用户名或密码错误，您还可以登录 ' . $count . ' 次！') : '密码错误次数过多，15分钟后重新登录！');
         }
