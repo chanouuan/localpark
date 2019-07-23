@@ -1055,9 +1055,11 @@ class RateLimit
             'microtime' => intval((MICROTIME - intval(MICROTIME)) * 1000)
         ];
         if ($limitVal) {
-            $rateTime = intval((MICROTIME - ($limitVal['time'] + $limitVal['microtime'] / 1000)) * 1000);
-            if ($interval > 0 && $rateTime < $interval) {
-                return error(null, StatusCodes::getMessage(StatusCodes::REQUEST_REPEAT), StatusCodes::REQUEST_REPEAT);
+            if ($interval > 0) {
+                $rateTime = intval((MICROTIME - ($limitVal['time'] + $limitVal['microtime'] / 1000)) * 1000);
+                if ($rateTime < $interval) {
+                    return error(null, StatusCodes::getMessage(StatusCodes::REQUEST_REPEAT), StatusCodes::REQUEST_REPEAT);
+                }
             }
             $currentTime = date('YmdHi', TIMESTAMP);
             $lastTime    = date('YmdHi', $limitVal['time']);
