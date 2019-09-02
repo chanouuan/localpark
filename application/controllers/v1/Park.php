@@ -42,6 +42,7 @@ class Park extends ActionPDO {
      * @param *car_number 车牌号
      * @param *node_id 通道ID
      * @param error_count 手动纠错车牌,此值为1
+     * @param original_car_number 手动纠错原车牌号
      * @return array
      * {
      * "errNo":0, // 错误码 0成功 -1失败
@@ -57,10 +58,11 @@ class Park extends ActionPDO {
     public function pass ()
     {
         return (new ParkModel())->pass([
-            'node_id'     => $_POST['node_id'],
-            'car_number'  => $_POST['car_number'],
-            'error_count' => $_POST['error_count'],
-            'onduty_id'   => $this->_G['user']['uid']
+            'node_id'             => $_POST['node_id'],
+            'car_number'          => $_POST['car_number'],
+            'error_count'         => $_POST['error_count'],
+            'original_car_number' => $_POST['original_car_number'],
+            'onduty_id'           => $this->_G['user']['uid']
         ]);
     }
 

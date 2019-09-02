@@ -49,11 +49,11 @@ class MemberCar extends SuperCar
                 ]);
                 $message[]   = $content['display'];
                 $broadcast[] = $content['voice'];
+                $carId       = $v['car_id'];
+                $carType     = CarType::INVALID_CAR; // 入场为过期车 注：会员车失效后是过期车，不会变成临时车
                 // 失效会员车是否允许入场
                 if ($pathInfo['allow_invalid_car']) {
-                    $carId      = $v['car_id'];
                     $signalType = SignalType::PASS_SUCCESS;
-                    $carType    = CarType::INVALID_CAR; // 入场为过期车 注：会员车失效后是过期车，不会变成临时车
                 }
             } else {
                 // 子母车位数限制
@@ -73,8 +73,8 @@ class MemberCar extends SuperCar
                         $message    = [$content['display']];
                         $broadcast  = [$content['voice']];
                         $signalType = SignalType::PASS_SUCCESS;
-                        $carType    = CarType::CHILD_CAR; // 入场为附属车
                         $carId      = $v['car_id'];
+                        $carType    = CarType::CHILD_CAR; // 入场为附属车
                         break;
                     } else {
                         // 播报消息
@@ -85,11 +85,11 @@ class MemberCar extends SuperCar
                         ]);
                         $message[]   = $content['display'];
                         $broadcast[] = $content['voice'];
+                        $carId       = $v['car_id'];
+                        $carType     = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
                         // 子母车位满后是否允许入场
                         if ($pathInfo['allow_child_car']) {
                             $signalType = SignalType::PASS_SUCCESS;
-                            $carType    = CarType::PAY_CAR; // 入场为缴费车 注：出场必缴费
-                            $carId      = $v['car_id'];
                         }
                     }
                 } else {
@@ -121,7 +121,7 @@ class MemberCar extends SuperCar
         if ($signalType == SignalType::PASS_SUCCESS) {
             $passType = PassType::NORMAL_PASS;
         } else {
-            $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
+            $signalType = SignalType::CONFIRM_NORMAL_CANCEL;
             $passType = PassType::WAIT_PASS;
         }
 

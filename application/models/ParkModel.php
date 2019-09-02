@@ -469,7 +469,8 @@ class ParkModel extends Crud {
         return $this->sendSignal($id, $result['message'], $result['broadcast'], $result['signal_type'], [
             'car_type'            => CarType::getMessage($result['car_type']),
             'original_car_number' => $post['original_car_number'],
-            'car_number'          => $post['car_number']
+            'car_number'          => $post['car_number'],
+            'node_id'             => $post['node_id']
         ]);
     }
 
@@ -494,7 +495,7 @@ class ParkModel extends Crud {
         }
 
         // 中场
-        $result = (new $className)->mid($nodeInfo);
+        $result = (new $className)->mid($entryCarInfo, $nodeInfo);
         // 中场错误
         if ($result['errorcode'] !== 0) {
             return $result;
@@ -521,7 +522,8 @@ class ParkModel extends Crud {
         return $this->sendSignal($entryCarInfo['id'], $result['message'], $result['broadcast'], $result['signal_type'], [
             'car_type'            => CarType::getMessage($result['car_type']),
             'original_car_number' => $post['original_car_number'],
-            'car_number'          => $post['car_number']
+            'car_number'          => $post['car_number'],
+            'node_id'             => $post['node_id']
         ]);
     }
 
@@ -597,7 +599,8 @@ class ParkModel extends Crud {
             'car_type'            => CarType::getMessage($result['car_type']),
             'original_car_number' => $post['original_car_number'],
             'car_number'          => $post['car_number'],
-            'money'               => $result['money']
+            'node_id'             => $post['node_id'],
+            'money'               => round_dollar($result['money'])
         ]);
     }
 
@@ -691,7 +694,8 @@ class ParkModel extends Crud {
             'car_type'            => CarType::getMessage($result['car_type']),
             'original_car_number' => $post['original_car_number'],
             'car_number'          => $post['car_number'],
-            'money'               => $result['money']
+            'node_id'             => $post['node_id'],
+            'money'               => round_dollar($result['money'])
         ]);
     }
 
@@ -851,7 +855,7 @@ class ParkModel extends Crud {
     {
         $car_number = $original_car_number == $car_number ? null : $car_number;
         return $this->getDb()->insert('chemi_correction_record', [
-            'node_id' => $node_id, 'original_car_number' => $original_car_number, 'car_number' => $car_number, 'error_scene' => json_encode($errorScene), 'error_count' => $errorCount, 'message' => json_encode($correctionMessage), 'update_time' => date('Y-m-d H:i:s', TIMESTAMP), 'create_time' => date('Y-m-d H:i:s', TIMESTAMP)
+            'node_id' => $node_id, 'original_car_number' => $original_car_number, 'car_number' => $car_number, 'error_scene' => json_encode($errorScene), 'error_count' => $errorCount, 'message' => json_mysql_encode($correctionMessage), 'update_time' => date('Y-m-d H:i:s', TIMESTAMP), 'create_time' => date('Y-m-d H:i:s', TIMESTAMP)
         ], null, false, true);
     }
 

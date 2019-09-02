@@ -18,7 +18,7 @@ class TempCar extends SuperCar
         // 临时车车位数限制
         if ($node['temp_car_count'] > 0 && $node['temp_car_left'] <= 0) {
             $broadcastType = BroadcastType::PLACE_LIMIT_ENTRY;
-            $signalType    = SignalType::CONFIRM_ABNORMAL_CANCEL;
+            $signalType    = SignalType::CONFIRM_NORMAL_CANCEL;
         } else {
             $broadcastType = BroadcastType::CAR_ENTRY;
             $signalType    = SignalType::PASS_SUCCESS;
@@ -59,7 +59,7 @@ class TempCar extends SuperCar
         foreach ($paths as $k => $v) {
             if (false !== ($load = $this->calculationCode($parameter, $v['calculation_code']))) {
                 if (empty($pathId) || $money > $load['cost']) {
-                    $pathId = $v['path_id'];
+                    $pathId = $v['id'];
                     $money  = $load['cost'];
                     $code   = $load['code'];
                     $logic  = array_key_clean($load, ['cost', 'code']);

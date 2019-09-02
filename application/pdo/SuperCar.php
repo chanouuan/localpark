@@ -93,6 +93,13 @@ abstract class SuperCar
             return false;
         }
         foreach ($parameter as $k => $v) {
+            if ($v === null) {
+                $v = 'null';
+            } else if ($v === '' || $v === false) {
+                $v = 'false';
+            } else if ($v === true) {
+                $v = 'true';
+            }
             $code = str_replace(['${"' . $k . '"}', '${\'' . $k . '\'}', '$' . $k], '{' . $v . '}', $code);
         }
         unset($parameter);

@@ -37,10 +37,26 @@ class AdminModel extends Crud {
         // 获取管理权限
         $permission = $this->getUserPermissions($userInfo['uid']);
         // login 权限验证
-        if (empty(array_intersect($post['permission'] ? $post['permission'] : ['ANY', 'login'], $permission))) {
+        if (empty(array_intersect($post['permission'] ? $post['permission'] : ['ANY', 'login'], $permission['permission']))) {
             return error('权限不足');
         }
-        $userInfo['permission'] = $permission;
+        $userInfo['role'] = $permission['role'];
+        $userInfo['permission'] = $permission['permission'];
+
+        $opt = [];
+        if (isset($post['clienttype'])) {
+            $opt['clienttype'] = $post['clienttype'];
+        }
+        if (isset($post['clientapp'])) {
+            $opt['clientapp'] = $post['clientapp'];
+        }
+
+        // 登录状态
+        $result = (new UserModel())->setloginstatus($userInfo['uid'], uniqid(), $opt);
+        if ($result['errorcode'] !== 0) {
+            return $result;
+        }
+        $userInfo['token'] = $result['result']['token'];
 
         return success($userInfo);
     }
@@ -67,7 +83,7 @@ class AdminModel extends Crud {
         $userModel = new UserModel();
 
         // 获取用户
-        if (!$userInfo = $userModel->find($condition, 'id,nickname,telephone,password')) {
+        if (!$userInfo = $this->getDb()->table('admin_user')->field('id,nickname,realname,telephone,password')->where($condition)->limit(1)->find()) {
             return error('用户名或密码错误');
         }
 
@@ -77,27 +93,24 @@ class AdminModel extends Crud {
             return error($count > 0 ? ('用户名或密码错误，您还可以登录 ' . $count . ' 次！') : '密码错误次数过多，15分钟后重新登录！');
         }
 
-        $opt = [];
-        if (isset($post['clienttype'])) {
-            $opt['clienttype'] = $post['clienttype'];
-        }
-        if (isset($post['clientapp'])) {
-            $opt['clientapp'] = $post['clientapp'];
-        }
-
-        // 登录状态
-        $result = $userModel->setloginstatus($userInfo['id'], uniqid(), $opt);
-        if ($result['errorcode'] !== 0) {
-            return $result;
-        }
-        $result = $result['result'];
-
         return success([
             'uid'       => $userInfo['id'],
-            'nickname'  => $userInfo['nickname'],
-            'telephone' => $userInfo['telephone'],
-            'token'     => $result['token']
+            'nickname'  => get_real_val($userInfo['realname'], $userInfo['nickname']),
+            'telephone' => $userInfo['telephone']
         ]);
+    }
+
+    /**
+     * 获取管理员信息
+     * @param $adminid
+     * @return array
+     */
+    public function getAdminInfo ($adminid)
+    {
+        if (!$adminInfo = $this->getDb()->table('admin_user')->field('id,nickname,realname,telephone,status')->where(['id' => $adminid])->limit(1)->find()) {
+            return error('用户不存在');
+        }
+        return success($adminInfo);
     }
 
     /**
@@ -124,7 +137,114 @@ class AdminModel extends Crud {
             return [];
         }
 
-        return array_column($permissions, 'name');
+        return [
+            'role' => $roles,
+            'permission' => array_column($permissions, 'name')
+        ];
+    }
+
+    /**
+     * 添加管理员
+     * @param $username 用户名
+     * @param $password 密码
+     * @param $role_id 角色
+     * @param $ext
+     * @return array
+     */
+    public function addAdmin ($username, $password, $role_id, array $ext = [])
+    {
+        $username = trim_space($username);
+        $role_id  = intval($role_id);
+        if (!$username) {
+            return error('账号不能为空');
+        }
+        if (!$password) {
+            return error('密码不能为空');
+        }
+        if (!$role_id) {
+            return error('角色不能为空');
+        }
+
+        $condition = [];
+        if (preg_match('/^\d+$/', $username)) {
+            if (!validate_telephone($username)) {
+                return error('手机号不正确');
+            }
+            $condition['telephone'] = $username;
+        } else {
+            $condition['nickname'] = $username;
+        }
+
+        // 获取用户
+        if (!$userInfo = $this->getDb()->table('admin_user')->field('id')->where($condition)->limit(1)->find()) {
+            // 新增用户
+            $condition['password']    = $password;
+            $condition['create_time'] = date('Y-m-d H:i:s', TIMESTAMP);
+            $condition['update_time'] = date('Y-m-d H:i:s', TIMESTAMP);
+            $condition = array_merge($condition, $ext);
+            if (!$id = $this->getDb()->insert('admin_user', $condition, null, null, true)) {
+                return error('添加用户失败');
+            }
+            $userInfo['id'] = $id;
+        } else {
+            $data = ['password' => $password, 'update_time' => date('Y-m-d H:i:s', TIMESTAMP)];
+            $data = array_merge($data, $ext);
+            if (!$this->getDb()->update('admin_user', $data, $condition)) {
+                return error('更新用户失败');
+            }
+        }
+
+        // 添加权限
+        if (!$this->getDb()->table('admin_role_user')->where(['user_id' => $userInfo['id'], 'role_id' => $role_id])->count()) {
+            $this->getDb()->insert('admin_role_user', [
+                'user_id' => $userInfo['id'],
+                'role_id' => $role_id
+            ]);
+        }
+
+        return success('ok');
+    }
+
+    /**
+     * 删除管理员
+     * @param $username 用户名
+     * @return array
+     */
+    public function delAdmin ($username)
+    {
+        $username = trim_space($username);
+        if (!$username) {
+            return error('账号不能为空');
+        }
+
+        $condition = [];
+        if (preg_match('/^\d+$/', $username)) {
+            if (!validate_telephone($username)) {
+                return error('手机号不正确');
+            }
+            $condition['telephone'] = $username;
+        } else {
+            $condition['nickname'] = $username;
+        }
+
+        // 获取用户
+        if (!$userInfo = $this->getDb()->table('admin_user')->field('id')->where($condition)->limit(1)->find()) {
+            return error('该用户不存在');
+        }
+
+        if (!$this->getDb()->transaction(function ($db) use($userInfo) {
+            if (!$db->delete('admin_user', ['id' => $userInfo['id']])) {
+                return false;
+            }
+            if (!$db->delete('admin_role_user', ['user_id' => $userInfo['id']])) {
+                return false;
+            }
+            return true;
+        })) {
+            return error('删除失败');
+        }
+
+        return success('ok');
     }
 
     /**

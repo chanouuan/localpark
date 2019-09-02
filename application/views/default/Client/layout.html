@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Client</title>
+    <meta name="renderer" content="webkit">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link rel="stylesheet" href="<?=APPLICATION_URL?>/static/layui/css/layui.css" media="all">
+    <style>
+        .layui-card-header {
+            background-color: #fff9ec;
+        }
+    </style>
+</head>
+<body>
+
+<blockquote class="layui-elem-quote">
+    <button id="login" type="button" class="layui-btn">值班员登录</button>
+</blockquote>
+<blockquote class="layui-elem-quote">
+    <p>
+        值班员：<span id="onduty-name"></span>
+        已收款：<span id="onduty-money"></span>
+        费用明细：<span id="onduty-detail"></span>
+        值班时间：<span id="onduty-time"></span>
+    </p>
+</blockquote>
+<blockquote class="layui-elem-quote">
+    <img src="<?=APPLICATION_URL?>/upload/停车场结构2x8.png">
+</blockquote>
+
+<div class="layui-row">
+    <div class="layui-col-md6">
+        <div class="layui-card">
+            <div class="layui-card-header">进出场</div>
+            <div class="layui-card-body">
+                <form class="layui-form">
+                    <div class="layui-form-item">
+                        <div class="layui-inline">
+                            <div class="layui-input-inline">
+                                <select name="node_id" lay-verify="required">
+                                    <?php foreach($nodes as $k=>$v){ ?>
+                                    <option value="<?=$v['id']?>"><?=$v['name']?></option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+                            <div class="layui-input-inline">
+                                <input type="text" maxlength="10" name="car_number" placeholder="请输入车牌号" autocomplete="off" class="layui-input">
+                            </div>
+                            <div class="layui-input-inline">
+                                <button lay-filter="enter" lay-submit="" type="button" class="layui-btn">进出场登记</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="layui-col-md6">
+        <div class="layui-card">
+            <div class="layui-card-header">接口返回</div>
+            <div class="layui-card-body">
+                <pre id="message" style="max-height: 110px;overflow-y: auto;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="layui-row">
+    <div class="layui-col-md6">
+        <div class="layui-card">
+            <div class="layui-card-header">进场记录</div>
+            <div class="layui-card-body">
+                <table id="entry-table" class="layui-table" ></table>
+            </div>
+        </div>
+    </div>
+    <div class="layui-col-md6">
+        <div class="layui-card">
+            <div class="layui-card-header">出场记录</div>
+            <div class="layui-card-body">
+                <table id="out-table" class="layui-table"></table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="login-tpl" type="text/html">
+    <form class="layui-form" style="margin-left: -20px;">
+        <div class="layui-form-item">
+            <label class="layui-form-label">用户名</label>
+            <div class="layui-input-block">
+                <input type="text" id="username" name="username" maxlength="20" required lay-verify="required" placeholder="请输入用户名" autocomplete="off" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">密码</label>
+            <div class="layui-input-block">
+                <input type="password" id="password" name="password" maxlength="20" required lay-verify="required" placeholder="请输入密码" autocomplete="off" class="layui-input">
+            </div>
+        </div>
+    </form>
+</script>
+
+<script id="panel-tpl" type="text/html">
+    <h3>{{ d.broadcast }}</h3>
+    <ul>
+        <li>车辆类型：{{ d.data.car_type }}</li>
+        <li>车牌号：{{ d.data.car_number }} <button onclick="manualCorrection(this)" data-node_id="{{ d.data.node_id }}" data-car_number="{{ d.data.car_number }}" id="manual-correction" type="button" class="layui-btn layui-btn-sm layui-btn-danger">手动纠错</button></li>
+        <li>原车牌号：{{ d.data.original_car_number || '无' }}</li>
+        {{#  if(d.data.money){ }}<li>缴费：{{ d.data.money }}元</li>{{#  } }}
+    </ul>
+</script>
+
+<script src="<?=APPLICATION_URL?>/static/layui/layui.js" charset="utf-8"></script>
+<script>
+    var userInfo = {};
+
+    layui.use(['form', 'layer', 'table', 'laytpl'], function() {
+        var $ = layui.jquery,
+            layer = layui.layer,
+            table = layui.table,
+            form = layui.form,
+            laytpl = layui.laytpl;
+
+        // 车牌纠错
+        window.manualCorrection = function manualCorrection(obj) {
+            var node_id = obj.getAttribute('data-node_id');
+            var original_car_number = obj.getAttribute('data-car_number');
+            layer.prompt({
+                 title: '请输入车牌号'
+                ,maxlength: 10
+                ,value: original_car_number
+            }, function(val, index){
+                if (val == original_car_number) {
+                    layer.close(index);
+                    return;
+                }
+                return pass({
+                    car_number:val,
+                    node_id:node_id,
+                    original_car_number:original_car_number,
+                    error_count:1
+                });
+            });
+        }
+
+        // 车辆进出场
+        form.on('submit(enter)', function(data){
+            return pass(data.field);
+        });
+
+        // 进出场
+        function pass (passData) {
+            $.ajax({
+                type: 'POST',
+                url: '<?=gurl("park/pass")?>',
+                data: passData,
+                dataType: 'json',
+                timeout: 10000,
+                success: function (list) {
+                    pushMsg(list);
+                    layer.closeAll();
+                    if (list.errorcode != 0) {
+                        return layer.msg(list.message);
+                    }
+                    layer.msg('语音播报：' + list.result.broadcast);
+                    if (list.result.status == 1) {
+                        // 起竿放行
+                    } else if (list.result.status == 2) {
+                        // 弹窗+异常放行+禁止通行
+                        layer.open({
+                            title: '提示'
+                            ,content: laytpl($('#panel-tpl').html()).render(list.result)
+                            ,btn: ['异常放行', '禁止通行']
+                            ,area: ['500px', '300px']
+                            ,yes: function(index, layero){
+                                // 异常放行
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '<?=gurl("park/abnormalPass")?>',
+                                    data: {
+                                        id:list.result.id,
+                                        node_id:list.result.data.node_id,
+                                        pay_type:1
+                                    },
+                                    dataType: 'json',
+                                    timeout: 10000,
+                                    success: function(data){
+                                        pushMsg(data);
+                                        if (data.errorcode != 0) {
+                                            return layer.msg(data.message);
+                                        }
+                                        layer.closeAll();
+                                        getOndutyCash();
+                                        layer.msg(data.result.broadcast);
+                                        table.reload('entry', {page: {curr: 1}});
+                                        table.reload('out', {page: {curr: 1}});
+                                        return false;
+                                    },
+                                    beforeSend: function(xhr){},
+                                    error: function(xhr, type){
+                                        layer.msg('网络错误，请重试!');
+                                    }
+                                });
+                                return false;
+                            }
+                            ,btn2: function(index, layero){
+                                // 禁止通行
+                                return true;
+                            }
+                            ,cancel: function(){
+                                return false;
+                            }
+                        });
+                    } else if (list.result.status == 3) {
+                        // 弹窗+正常放行+撤销出场
+                        layer.open({
+                            title: '提示'
+                            ,content: laytpl($('#panel-tpl').html()).render(list.result)
+                            ,btn: ['正常放行', '撤销出场']
+                            ,area: ['500px', '300px']
+                            ,yes: function(index, layero){
+                                // 正常放行
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '<?=gurl("park/normalPass")?>',
+                                    data: {
+                                        id:list.result.id,
+                                        node_id:list.result.data.node_id,
+                                        pay_type:1
+                                    },
+                                    dataType: 'json',
+                                    timeout: 10000,
+                                    success: function(data){
+                                        pushMsg(data);
+                                        if (data.errorcode != 0) {
+                                            return layer.msg(data.message);
+                                        }
+                                        layer.closeAll();
+                                        getOndutyCash();
+                                        layer.msg(data.result.broadcast);
+                                        table.reload('entry', {page: {curr: 1}});
+                                        table.reload('out', {page: {curr: 1}});
+                                        return false;
+                                    },
+                                    beforeSend: function(xhr){},
+                                    error: function(xhr, type){
+                                        layer.msg('网络错误，请重试!');
+                                    }
+                                });
+                                return false;
+                            }
+                            ,btn2: function(index, layero){
+                                // 撤销出场
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '<?=gurl("park/revokePass")?>',
+                                    data: {
+                                        id:list.result.id,
+                                        node_id:list.result.data.node_id
+                                    },
+                                    dataType: 'json',
+                                    timeout: 10000,
+                                    success: function(data){
+                                        pushMsg(data);
+                                        if (data.errorcode != 0) {
+                                            return layer.msg(data.message);
+                                        }
+                                        layer.closeAll();
+                                        getOndutyCash();
+                                        layer.msg(data.result.broadcast);
+                                        table.reload('entry', {page: {curr: 1}});
+                                        table.reload('out', {page: {curr: 1}});
+                                        return false;
+                                    },
+                                    beforeSend: function(xhr){},
+                                    error: function(xhr, type){
+                                        layer.msg('网络错误，请重试!');
+                                    }
+                                });
+                                return false;
+                            }
+                            ,cancel: function(){
+                                return false;
+                            }
+                        });
+                    }
+                    table.reload('entry', {page: {curr: 1}});
+                    table.reload('out', {page: {curr: 1}});
+                    return false;
+                },
+                beforeSend: function (xhr) {
+                    layer.load();
+                },
+                error: function (xhr, type) {
+                    layer.closeAll();
+                    layer.msg('网络错误，请重试!');
+                }
+            });
+            return false;
+        }
+
+        // 入场记录查询
+        table.render({
+            elem: '#entry-table'
+            ,id: 'entry'
+            ,height: 312
+            ,url: '<?=gurl("client/getEntryList")?>'
+            ,page: true
+            ,cols: [[
+                 {field: 'id', title: 'ID'}
+                ,{field: 'car_number', title: '车牌号'}
+                ,{field: 'car_type', title: '车辆类型'}
+                ,{field: 'current_car_type', title: '计费类型'}
+                ,{field: 'current_node_name', title: '当前通道'}
+                ,{field: 'pass_type', title: '通行方式'}
+                ,{field: 'last_nodes', title: '通行记录'}
+                ,{field: 'correction_record', title: '车牌纠正记录'}
+                ,{field: 'code_process', title: '计费过程'}
+            ]]
+            ,parseData: function(res){
+                return {
+                    "code": res.errorcode,
+                    "msg": res.message,
+                    "count": res.result.total,
+                    "data": res.result.list
+                };
+            }
+        });
+
+        // 出场记录查询
+        table.render({
+            elem: '#out-table'
+            ,id: 'out'
+            ,height: 312
+            ,url: '<?=gurl("client/getOutList")?>'
+            ,page: true
+            ,cols: [[
+                 {field: 'id', title: 'ID'}
+                ,{field: 'car_number', title: '车牌号'}
+                ,{field: 'car_type', title: '车辆类型'}
+                ,{field: 'current_car_type', title: '计费类型'}
+                ,{field: 'current_node_name', title: '当前通道'}
+                ,{field: 'pass_type', title: '通行方式'}
+                ,{field: 'last_nodes', title: '通行记录'}
+                ,{field: 'correction_record', title: '车牌纠正记录'}
+                ,{field: 'code_process', title: '计费过程'}
+            ]]
+            ,parseData: function(res){
+                return {
+                    "code": res.errorcode,
+                    "msg": res.message,
+                    "count": res.result.total,
+                    "data": res.result.list
+                };
+            }
+        });
+
+        // 获取值班费用
+        function getOndutyCash(){
+            $.ajax({
+                type: 'POST',
+                url: '<?=gurl("park/getOndutyCash")?>',
+                dataType: 'json',
+                timeout: 10000,
+                success: function(list){
+                    if (list.errorcode != 0) {
+                        return layer.msg(list.message);
+                    }
+                    $('#onduty-name').html(userInfo.nickname);
+                    $('#onduty-money').html(list.result.money);
+                    $('#onduty-detail').html(JSON.stringify(list.result.detail));
+                    $('#onduty-time').html(list.result.create_time);
+                    return true;
+                }
+            });
+        }
+
+        // 登录
+        $('#login').on('click', function(){
+            layer.open({
+                title: '登录'
+                ,content: $('#login-tpl').html()
+                ,yes: function(){
+                    $.ajax({
+                        type: 'POST',
+                        url: '<?=gurl("park/ondutyLogin")?>',
+                        data: {
+                            username:$('#username').val(),
+                            password:$('#password').val()
+                        },
+                        dataType: 'json',
+                        timeout: 10000,
+                        success: function(list){
+                            pushMsg(list);
+                            layer.closeAll();
+                            if (list.errorcode != 0) {
+                                return layer.msg(list.message);
+                            }
+                            userInfo = list.result;
+                            getOndutyCash();
+                            layer.alert('登录成功');
+                        },
+                        beforeSend: function(xhr){
+                            layer.load();
+                        },
+                        error: function(xhr, type){
+                            layer.closeAll();
+                            layer.msg('网络错误，请重试!');
+                        }
+                    });
+                    return false;
+                }
+            });
+        });
+
+        function pushMsg (data) {
+            document.getElementById('message').innerHTML += JSON.stringify(data)+"\n\n";
+            document.getElementById('message').scrollTop = '1000000';
+        }
+    });
+</script>
+
+</body>
+</html>

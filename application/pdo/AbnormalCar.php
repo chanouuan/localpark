@@ -24,21 +24,25 @@ class AbnormalCar extends SuperCar
             $money = 0;
             $signalType = SignalType::PASS_SUCCESS;
             $broadcastType = BroadcastType::CAR_OUT;
+            $passType = PassType::ABNORMAL_PASS;
         } else if ($node['abnormal_car_pass_way'] == AbnormalCarPassWay::CHARGE) {
             // 异常收费
             $money = $node['abnormal_car_charge'];
             if ($money <= 0) {
                 $signalType = SignalType::PASS_SUCCESS;
                 $broadcastType = BroadcastType::CAR_OUT;
+                $passType = PassType::ABNORMAL_PASS;
             } else {
                 $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
                 $broadcastType = BroadcastType::CAR_PAY_OUT;
+                $passType = PassType::WAIT_PASS;
             }
         } else if ($node['abnormal_car_pass_way'] == AbnormalCarPassWay::MANUAL_PASS) {
             // 手动放行
             $money = 0;
             $signalType = SignalType::CONFIRM_ABNORMAL_CANCEL;
             $broadcastType = BroadcastType::ABNORMAL_PASS;
+            $passType = PassType::WAIT_PASS;
         } else {
             return error(CarType::getMessage(CarType::ABNORMAL_CAR) . '不能通行');
         }
@@ -57,7 +61,7 @@ class AbnormalCar extends SuperCar
             'message'     => $message,
             'broadcast'   => $broadcast,
             'signal_type' => $signalType,
-            'pass_type'   => PassType::ABNORMAL_PASS,
+            'pass_type'   => $passType,
             'money'       => $money
         ]);
     }
