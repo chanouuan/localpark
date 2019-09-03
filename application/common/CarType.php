@@ -19,7 +19,6 @@ class CarType
     const ABNORMAL_CAR   = 18;
     const MEMBER_CAR     = 100;
 
-
     static $message = [
         1   => '临时车',
         2   => '月卡车',
@@ -45,6 +44,18 @@ class CarType
             self::MONTH_CARD_CAR, self::VIP_CAR,   self::FIXED_CAR,
             self::STORE_CARD_CAR, self::CHILD_CAR, self::ORDINARY_CAR,
             self::INVALID_CAR,    self::PAY_CAR,   self::MEMBER_CAR
+        ]);
+    }
+
+    /**
+     * 是否有车位的会员车（用于验证是否需要更新车位数）
+     * @param $code
+     * @return bool
+     */
+    public static function isMemberLeftCar ($code)
+    {
+        return !in_array($code, [
+            self::PAY_CAR
         ]);
     }
 

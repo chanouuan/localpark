@@ -671,19 +671,19 @@ class ParkModel extends Crud {
             }
         } else {
             if (!$id = $this->entryModel->addEntryInfo([
-                'car_type'            => $result['car_type'],
-                'current_car_type'    => $result['car_type'],
-                'car_number'          => $post['car_number'],
-                'money'               => $result['money'],
-                'real_money'          => $result['money'],
-                'current_node_id'     => $post['node_id'],
-                'last_nodes'          => json_encode($this->entryModel->connectNode([], $post['node_id'], $result['car_type'], $result['money'])),
-                'correction_record'   => json_encode([$post['correction_record_id']]),
-                'pass_type'           => $result['pass_type'],
-                'onduty_id'           => $post['onduty_id'],
-                'broadcast'           => $result['broadcast'],
-                'signal_type'         => $result['signal_type'],
-                'dot'                 => DotType::START_DOT
+                'car_type'          => $result['car_type'],
+                'current_car_type'  => $result['car_type'],
+                'car_number'        => $post['car_number'],
+                'money'             => $result['money'],
+                'real_money'        => $result['money'],
+                'current_node_id'   => $post['node_id'],
+                'last_nodes'        => json_encode($this->entryModel->connectNode([], $post['node_id'], $result['car_type'], $result['money'])),
+                'correction_record' => json_encode([$post['correction_record_id']]),
+                'pass_type'         => $result['pass_type'],
+                'onduty_id'         => $post['onduty_id'],
+                'broadcast'         => $result['broadcast'],
+                'signal_type'       => $result['signal_type'],
+                'dot'               => DotType::START_DOT
             ])) {
                 return error('入场错误,请重试');
             }

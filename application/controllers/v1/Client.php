@@ -109,6 +109,7 @@ class Client extends ActionPDO {
                 $list[$k]['current_car_type'] = CarType::getMessage($v['current_car_type']);
                 $list[$k]['pass_type'] = PassType::getMessage($v['pass_type']);
                 $list[$k]['current_node_name'] = $nodes[$v['current_node_id']]['name'];
+                $list[$k]['money'] = round_dollar($v['money']);
                 foreach ($list[$k]['correction_record'] as $kk => $vv) {
                     $list[$k]['correction_record'][$kk] = implode('<br/>', $corrections[$vv]['mark']);
                 }
@@ -159,6 +160,7 @@ class Client extends ActionPDO {
                 $list[$k]['current_car_type'] = CarType::getMessage($v['current_car_type']);
                 $list[$k]['pass_type'] = PassType::getMessage($v['pass_type']);
                 $list[$k]['current_node_name'] = $nodes[$v['current_node_id']]['name'];
+                $list[$k]['money'] = round_dollar($v['money']);
                 foreach ($list[$k]['correction_record'] as $kk => $vv) {
                     $list[$k]['correction_record'][$kk] = implode('<br/>', $corrections[$vv]['mark']);
                 }

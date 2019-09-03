@@ -58,7 +58,7 @@ class EntryModel extends Crud {
                 'id' => $data['current_node_id'], 'temp_car_count' => ['>', 0], 'temp_car_left' => ['>', 0]
             ]);
         }
-        if ($data['car_type'] == CarType::MEMBER_CAR) {
+        if ($data['car_type'] == CarType::MEMBER_CAR && CarType::isMemberLeftCar($data['current_car_type'])) {
             // 会员车车位数-1
             $this->getDb()->update('chemi_car_path', [
                 'place_left' => ['place_left-1']
@@ -109,7 +109,7 @@ class EntryModel extends Crud {
                         'id' => $data['current_node_id'], 'temp_car_count' => ['>', 0], 'temp_car_left' => ['>', 0]
                     ]);
                 }
-                if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
+                if ($entryInfo['car_type'] == CarType::MEMBER_CAR && CarType::isMemberLeftCar($entryInfo['current_car_type'])) {
                     // 会员车车位数-1
                     if (DotType::isEndDot($entryInfo['dot'])) {
                         $this->getDb()->update('chemi_car_path', [
@@ -142,7 +142,7 @@ class EntryModel extends Crud {
                     ]);
                 }
             }
-            if ($entryInfo['car_type'] == CarType::MEMBER_CAR) {
+            if ($entryInfo['car_type'] == CarType::MEMBER_CAR && CarType::isMemberLeftCar($data['current_car_type'])) {
                 // 会员车车位数+1
                 if (DotType::isEndDot($data['dot'])) {
                     $this->getDb()->update('chemi_car_path', [
